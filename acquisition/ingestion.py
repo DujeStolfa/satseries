@@ -58,33 +58,20 @@ class IngestionRequest(ABC):
         pass
 
     def get_data(self, timestamp, bbox, crs):
+        """Timestamp mora bit valjan"""
         bbox = _parse_bbox(bbox, crs, self.resolution, self.resolution)
         time_difference = dt.timedelta(hours=1)
 
-        if isinstance(timestamp, dt.datetime):
-            available_ts = self.unique_acquisitions(
-                timestamp - time_difference, timestamp + time_difference, bbox, crs
-            )
-        elif isinstance(timestamp, dt.date):
-            dt_midnight = dt.datetime.combine(timestamp, dt.datetime.min.time())
-            available_ts = self.unique_acquisitions(
-                dt_midnight, dt_midnight + dt.timedelta(hours=24), bbox, crs
-            )
-        else:
-            raise TypeError(
-                "timestamp has to either be datetime.datetime or datetime.date"
-            )
-
-        if len(available_ts) == 0:
-            return None, None
-
-        request = self._construct_request(bbox, available_ts[0], time_difference)
+        request = self._construct_request(bbox, timestamp, time_difference)
         response: DownloadResponse = request.get_data(decode_data=False)[0]
-        return response.content, available_ts[0]
+        return response.content
 
-    def unique_acquisitions(self, dt_from, dt_to, bbox, crs):
+    def unique_acquisitions(self, dt_from, dt_to, bbox, crs, max_cloud_cover=None):
         bbox = _parse_bbox(bbox, crs, self.resolution, self.resolution)
-        search_iterator = self._search_catalog(dt_from, dt_to, bbox)
+        filter = (
+            f"eo:cloud_cover < {max_cloud_cover}" if max_cloud_cover is not None else ""
+        )
+        search_iterator = self._search_catalog(dt_from, dt_to, bbox, filter)
 
         time_difference = dt.timedelta(hours=1)
         all_timestamps = search_iterator.get_timestamps()
@@ -111,13 +98,14 @@ class IngestionRequest(ABC):
             resolution=(self.resolution, self.resolution),
         )
 
-    def _search_catalog(self, dt_from, dt_to, bbox) -> CatalogSearchIterator:
+    def _search_catalog(self, dt_from, dt_to, bbox, filter) -> CatalogSearchIterator:
         catalog = SentinelHubCatalog()
 
         return catalog.search(
             self.collection,
             bbox=bbox,
             time=(dt_from, dt_to),
+            filter=filter,
             fields={
                 "include": ["id", "properties.datetime"],
                 "exclude": [],
@@ -327,7 +315,9 @@ if __name__ == "__main__":
             43.32676437,
             16.44346314,
             43.33396576,
-        )
+        ),
+        "EPSG:4326",
+        "EPSG:3765",
     )
 
     # request = Sentinel2SCLRequest()
@@ -336,17 +326,17 @@ if __name__ == "__main__":
     # request = PlanetScopeDataMaskRequest()
 
     bbox_exp = expand_bbox_to_resolution(
-        polygon, "EPSG:32633", request.resolution, request.resolution
+        polygon, "EPSG:3765", request.resolution, request.resolution
     )
 
     acqs = request.unique_acquisitions(
-        dt.datetime(2023, 8, 14),
-        dt.datetime(2023, 8, 18),
+        dt.datetime(2024, 7, 13),
+        dt.datetime(2024, 7, 17),
         bbox_exp,
-        "EPSG:32633",
+        "EPSG:3765",
     )
 
-    data, actual_ts = request.get_data(acqs[0], bbox_exp, "EPSG:32633")
+    data, actual_ts = request.get_data(acqs[0], bbox_exp, "EPSG:3765")
     with MemoryFile(data) as f:
         with f.open() as ds:
             print(ds.shape, ds.count)

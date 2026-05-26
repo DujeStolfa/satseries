@@ -6,8 +6,8 @@ from shapely.ops import transform
 
 def reproject_polygon(
     poly,
-    crs_from=pyproj.CRS("EPSG:4326"),
-    crs_to=pyproj.CRS("EPSG:32633"),
+    crs_from,
+    crs_to,
 ):
     project = pyproj.Transformer.from_crs(crs_from, crs_to, always_xy=True).transform
     return transform(project, poly)

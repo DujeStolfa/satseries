@@ -6,8 +6,8 @@ function setup() {
             units: "DN"
         }],
         output: {
-            bands: 14,
-            sampleType: "INT16"
+            bands: 13,
+            sampleType: "UINT16"
         }
     };
 }
@@ -24,7 +24,6 @@ function evaluatePixel(sample) {
         sample.B08,
         sample.B8A,
         sample.B09,
-        sample.B10,
         sample.B11,
         sample.B12,
         sample.SCL
