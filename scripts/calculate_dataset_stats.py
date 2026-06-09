@@ -6,11 +6,7 @@ import torch
 from tqdm import tqdm
 
 import core.transforms as t
-from core.datasets import (
-    TimeSeriesDatasetSample,
-    SatelliteTimeSeriesDataset,
-    AugmentedDataset,
-)
+from core.datasets import TimeSeriesDatasetSample
 
 
 class Stats:
@@ -53,22 +49,39 @@ class Stats:
 
 
 if __name__ == "__main__":
-    import pdb
+    from core.datasets import SatelliteTimeSeriesDataset, AugmentedDataset, DatasetSplit
 
     parser = argparse.ArgumentParser(description="Calculate dataset statistics")
     parser.add_argument("root")
     parser.add_argument("out")
+    parser.add_argument("instance")
     args = parser.parse_args()
 
-    ds = AugmentedDataset(SatelliteTimeSeriesDataset(args.root), t.ToTensor())
+    ds = AugmentedDataset(
+        SatelliteTimeSeriesDataset(
+            args.root,
+            SatelliteTimeSeriesDataset.DatasetInstance(args.instance),
+            DatasetSplit.TRAIN,
+        ),
+        t.Compose(
+            [
+                t.ToTensor(),
+                t.Scale(1e-4, dim=1),
+                t.AddSpectralFeatures(dim=1, r_idx=3, nir_idx=7),
+            ]
+        ),
+    )
     stats = Stats()
 
-    for item in tqdm(ds):
+    pbar = tqdm(ds)
+    for item in pbar:
         stats.update(item)
+        tqdm.write(f"\nmean={stats.mean},\nstd={stats.std}\033[5F")
 
+    print("\n" * 5)
     print(stats)
 
-    with open(Path(args.out) / "dataset_stats.json", "w") as f:
+    with open(Path(args.out) / f"dataset_stats_{args.instance}.json", "w") as f:
         json.dump(
             {
                 "mean": stats.mean.tolist(),

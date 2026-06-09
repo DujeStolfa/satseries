@@ -1,4 +1,5 @@
 import json
+from enum import StrEnum
 from typing import List
 
 import numpy as np
@@ -10,6 +11,12 @@ import torch.nn.utils as utils
 from dataclasses import dataclass
 from datetime import datetime as dt
 from pathlib import Path
+
+
+class DatasetSplit(StrEnum):
+    TRAIN = "train"
+    VALIDATION = "val"
+    TEST = "test"
 
 
 @dataclass
@@ -33,20 +40,26 @@ class AugmentedDataset(data.Dataset):
 
 
 class SatelliteTimeSeriesDataset(data.Dataset):
-    def __init__(self, root_dir):
-        self.root_dir = Path(root_dir)
+    class DatasetInstance(StrEnum):
+        REGIONAL = "regional"
+        RANDOM = "random"
 
-        # mozda i ovo procitat iz metapodataka?
-        series_dir = self.root_dir / "series"
-        self.series_dirs = [p for p in series_dir.iterdir() if p.is_dir()]
+    def __init__(self, root_dir, instance: DatasetInstance, split: DatasetSplit):
+        self._root_dir = Path(root_dir)
+        self._instance = instance
+        self._split = split
 
-        with open(self.root_dir / "metadata.json") as f:
-            self.metadata = json.load(f)
+        with open(self._root_dir / "metadata.json") as f:
+            self._metadata = json.load(f)
 
-        # procitat splitove
+        self._series_ids = self._metadata["splits"][instance.value][split.value]
+
+        series_dir = self._root_dir / "series"
+        self._series_dirs = [series_dir / str(sid) for sid in self._series_ids]
+        self._series_dirs = [dir for dir in self._series_dirs if dir.is_dir()]
 
     def __len__(self):
-        return len(self.series_dirs)
+        return len(self._series_dirs)
 
     def __getitem__(self, index) -> TimeSeriesDatasetSample:
         if index >= len(self):
@@ -54,14 +67,14 @@ class SatelliteTimeSeriesDataset(data.Dataset):
                 f"Index {index} out of range for dataset of size {len(self)}"
             )
 
-        curr_path = self.series_dirs[index]
+        curr_path = self._series_dirs[index]
         series_id = str(curr_path.name)
 
         images = np.load(curr_path / "l2a.npy")
         with rasterio.open(curr_path / "labels_10m.tif") as ds:
             labels = ds.read(1)
 
-        curr_series_metadata = self.metadata["series"][series_id]
+        curr_series_metadata = self._metadata["series"][series_id]
 
         dates = [
             dt.strptime(d, "%Y-%m-%dT%H-%M-%S")
@@ -80,6 +93,9 @@ class SatelliteTimeSeriesDataset(data.Dataset):
             timesteps=ymd,
             latlon=latlon,
         )
+
+    def get_train_stats(self):
+        return self._metadata["stats"][self._instance.value]
 
 
 def pad_collate_fn(batch: List[TimeSeriesDatasetSample], pad_index=0):
@@ -107,25 +123,6 @@ def pad_collate_fn(batch: List[TimeSeriesDatasetSample], pad_index=0):
     )
 
 
-# def pad_collate_fn(batch, pad_index=0):
-#     others, labels = zip(*batch)
-#     # images, ymd, latlon = zip(*others)
-#     images = others
-
-#     # lengths = torch.tensor([len(date) for date in ymd], dtype=torch.uint32)
-#     padded_images = utils.rnn.pad_sequence(
-#         images, padding_value=pad_index, batch_first=True
-#     )
-#     # padded_ymd = utils.rnn.pad_sequence(ymd, padding_value=pad_index, batch_first=True)
-#     return padded_images, torch.stack(labels)
-
-#     return (
-#         (padded_images, padded_ymd, torch.stack(latlon)),
-#         torch.stack(labels),
-#         lengths,
-#     )
-
-
 if __name__ == "__main__":
     import matplotlib.animation as animation
     import matplotlib.pyplot as plt
@@ -137,7 +134,12 @@ if __name__ == "__main__":
         return rgb / 1000
 
     ds = AugmentedDataset(
-        SatelliteTimeSeriesDataset("E:\\data\\diplomski\\amorfa"), t.ToTensor()
+        SatelliteTimeSeriesDataset(
+            "E:\\data\\diplomski\\amorfa",
+            SatelliteTimeSeriesDataset.DatasetInstance.REGIONAL,
+            DatasetSplit.TEST,
+        ),
+        t.ToTensor(),
     )
     dataloader = data.DataLoader(ds, 4, shuffle=True, collate_fn=pad_collate_fn)
 
@@ -148,9 +150,7 @@ if __name__ == "__main__":
     pdb.set_trace()
 
     item = ds[100]
-    images = item.images
-
-    print(ds.series_dirs[100])
+    images = item.images.numpy()
 
     fig = plt.figure()
 

@@ -43,22 +43,199 @@ class ToTensor:
 
         x.images = torch.from_numpy(x.images).float()
         x.mask = torch.from_numpy(x.mask)
-        x.timesteps = torch.from_numpy(x.timesteps)
+        x.timesteps = torch.from_numpy(x.timesteps).to(torch.int16)
         x.latlon = torch.from_numpy(x.latlon).float()
         return x
 
 
 class Scale:
-    def __init__(self, factor, channels: List[int]):
+    def __init__(self, factor, dim: int, indices: List[int] = None):
         self._factor = factor
-        self._channels = channels
+        self._dim = dim
+        self._indices = indices
 
     def __call__(self, x):
         if isinstance(x, (torch.Tensor, np.ndarray)):
-            x[..., self._channels] = self._factor * x[..., self._channels]
+            num_dims = len(x.shape)
         else:
-            x.images[..., self._channels] = self._factor * x.images[..., self._channels]
+            num_dims = len(x.images.shape)
 
+        curr_slice = [slice(None)] * num_dims
+        if self._indices is not None and len(self._indices) != 0:
+            curr_slice[self._dim] = self._indices
+
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            x[*curr_slice] = self._factor * x[*curr_slice]
+        else:
+            x.images[*curr_slice] = self._factor * x.images[*curr_slice]
+
+        return x
+
+
+class BiasedRandomCrop:
+    def __init__(self, width, height, background=-1, seed=None):
+        self._crop_width = width
+        self._crop_height = height
+        self._background = background
+        self._rng = np.random.default_rng(seed)
+
+    def __call__(self, x):
+        mask_data = x.mask.numpy() if hasattr(x.mask, "numpy") else x.mask
+        valid_pixels = np.argwhere(mask_data != self._background)
+
+        img_height, img_width = x.mask.shape[-2:]
+
+        if len(valid_pixels) == 0:
+            top = self._rng.integers(0, img_height - self._crop_height + 1)
+            left = self._rng.integers(0, img_width - self._crop_width + 1)
+
+        else:
+            valid_y, valid_x = valid_pixels[self._rng.integers(0, len(valid_pixels))]
+
+            low_y = max(0, valid_y - self._crop_height + 1)
+            high_y = min(img_height - self._crop_height, valid_y)
+
+            low_x = max(0, valid_x - self._crop_width + 1)
+            high_x = min(img_width - self._crop_width, valid_x)
+
+            top = self._rng.integers(low_y, high_y + 1) if low_y < high_y else low_y
+            left = self._rng.integers(low_x, high_x + 1) if low_x < high_x else low_x
+
+        x.images = x.images[
+            ..., top : top + self._crop_height, left : left + self._crop_width
+        ]
+        x.mask = x.mask[
+            ..., top : top + self._crop_height, left : left + self._crop_width
+        ]
+
+        return x
+
+
+class BatchSpatialFlatten:
+    def __init__(self, batch_first):
+        self._batch_first = batch_first
+
+    def __call__(self, batch):
+        new_images = batch.images  # [B, T, C, H, W]
+        new_mask = batch.mask  # [B, H, W]
+        new_timesteps = batch.timesteps  # [B, T, 4 (YMDH)]
+        new_latlon = batch.latlon  # [B, 2]
+
+        if not self._batch_first:
+            new_images = new_images.swapaxes(0, 1)
+            new_timesteps = new_timesteps.swapaxes(0, 1)
+
+        shape = new_images.shape
+        b, t, c, h, w = shape
+
+        new_images = new_images.permute(0, 3, 4, 1, 2).reshape(b * h * w, t, c)
+        new_mask = new_mask.reshape(b * h * w)
+        new_timesteps = (
+            new_timesteps[:, None, None, :, :]
+            .expand(-1, h, w, -1, -1)
+            .reshape(b * h * w, t, batch.timesteps.shape[-1])
+        )
+        new_latlon = (
+            new_latlon[:, None, None, :]
+            .expand(-1, h, w, -1)
+            .reshape(b * h * w, batch.latlon.shape[-1])
+        )
+
+        if not self._batch_first:
+            new_images = new_images.swapaxes(0, 1)
+            new_timesteps = new_timesteps.swapaxes(0, 1)
+
+        batch.images = new_images
+        batch.mask = new_mask
+        batch.timesteps = new_timesteps
+        batch.latlon = new_latlon
+        return batch
+
+
+class MonthlyRandomSample:
+    def __init__(self, month_start, month_end, seed=None):
+        if month_end < month_start:
+            raise ValueError(f"End month can't be before start month")
+
+        if month_start <= 0:
+            raise ValueError(f"Invalid month {month_start}")
+
+        if month_end > 12:
+            raise ValueError(f"Invalid month {month_end}")
+
+        self._month_start = month_start
+        self._month_end = month_end
+        self._rng = np.random.default_rng(seed)
+
+    def __call__(self, x):
+        months = x.timesteps[:, 1]
+
+        values, start_idx = np.unique(months, return_index=True)
+        end_idx = np.r_[start_idx[1:], len(months)]  # posmak
+
+        # izbaci mjesece izvan zadanog raspona
+        mask = (values >= self._month_start) & (values <= self._month_end)
+
+        values = values[mask]
+        start_idx = start_idx[mask]
+        end_idx = end_idx[mask]
+
+        # odaberi jednu sliku u svakom mjesecu
+        sizes = end_idx - start_idx
+        offsets = self._rng.integers(0, sizes)
+        selected_idx = start_idx + offsets
+
+        # nadopuni nulama u slucaju da nedostaju podaci za neki mjesec
+        month_count = self._month_end - self._month_start + 1
+        new_images = np.zeros(
+            [month_count, *x.images.shape[1:]],
+            dtype=x.images.dtype,
+        )
+        new_timesteps = np.zeros(
+            [month_count, *x.timesteps.shape[1:]],
+            dtype=x.timesteps.dtype,
+        )
+
+        # stvarne vrijednosti
+        new_images[values - self._month_start] = x.images[selected_idx, ...]
+        new_timesteps[values - self._month_start] = x.timesteps[selected_idx, ...]
+
+        x.images = new_images
+        x.timesteps = new_timesteps
+        return x
+
+
+class AddSpectralFeatures:
+    def __init__(self, dim, r_idx, nir_idx):
+        super().__init__()
+        self._dim = dim
+        self._r_idx = r_idx
+        self._nir_idx = nir_idx
+
+    def __call__(self, x):
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            num_dims = len(x.shape)
+        else:
+            num_dims = len(x.images.shape)
+
+        red_slice = [slice(None)] * num_dims
+        nir_slice = [slice(None)] * num_dims
+        red_slice[self._dim] = self._r_idx
+        nir_slice[self._dim] = self._nir_idx
+
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            red = x[*red_slice]
+            nir = x[*nir_slice]
+        else:
+            red = x.images[*red_slice]
+            nir = x.images[*nir_slice]
+
+        ndvi = (nir - red) / (nir + red + 1e-10)
+
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            return torch.cat([x, ndvi.unsqueeze(self._dim)], dim=self._dim)
+
+        x.images = torch.cat([x.images, ndvi.unsqueeze(self._dim)], dim=self._dim)
         return x
 
 
