@@ -1,3 +1,4 @@
+import time
 import torch
 
 import core.transforms as t
@@ -39,6 +40,7 @@ if __name__ == "__main__":
     }
 
     DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
+    collate_fn = pad_collate_fn
     core_train_ds = SatelliteTimeSeriesDataset(
         DATASET_ROOT,
         SatelliteTimeSeriesDataset.DatasetInstance.REGIONAL,
@@ -94,12 +96,27 @@ if __name__ == "__main__":
     )
 
     cfg = ExperimentConfig(
-        name="Initial experiment",
+        name="Dev experiment",
         training=cfg_train,
         model=cfg_model,
-        transforms=[],  # TODO: transforms
+        data={
+            "train": train_ds.config_dict,
+            "collate_fn": None if collate_fn is None else collate_fn.__name__,
+        },
+        transforms={
+            "train": train_transforms.config_dict,
+            "testval": test_transforms.config_dict,
+            "batch": batch_transforms.config_dict,
+        },
     )
-
+    run_name = time.strftime(f"%Y%m%d_%H%M", time.gmtime())
     run_experiment(
-        cfg, train_ds, val_ds, test_ds, pad_collate_fn, device, batch_transforms
+        run_name,
+        cfg,
+        train_ds,
+        val_ds,
+        test_ds,
+        collate_fn,
+        device,
+        batch_transforms,
     )

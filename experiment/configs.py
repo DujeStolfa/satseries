@@ -18,4 +18,5 @@ class ExperimentConfig:
     name: str
     model: dict
     training: TrainingConfig
-    transforms: List[dict]
+    data: dict
+    transforms: dict

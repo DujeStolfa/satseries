@@ -38,6 +38,13 @@ class AugmentedDataset(data.Dataset):
     def __getitem__(self, index) -> TimeSeriesDatasetSample:
         return self._transform(self._dataset[index])
 
+    @property
+    def config_dict(self):
+        return dict(
+            name=type(self).__name__,
+            dataset=self._dataset.config_dict,
+        )
+
 
 class SatelliteTimeSeriesDataset(data.Dataset):
     class DatasetInstance(StrEnum):
@@ -57,6 +64,15 @@ class SatelliteTimeSeriesDataset(data.Dataset):
         series_dir = self._root_dir / "series"
         self._series_dirs = [series_dir / str(sid) for sid in self._series_ids]
         self._series_dirs = [dir for dir in self._series_dirs if dir.is_dir()]
+
+    @property
+    def config_dict(self):
+        return dict(
+            name=type(self).__name__,
+            root_dir=self._root_dir,
+            instance=self._instance.value,
+            split=self._split.value,
+        )
 
     def __len__(self):
         return len(self._series_dirs)

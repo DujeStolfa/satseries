@@ -1,4 +1,14 @@
 *.tif
+*.npy
 
 .venv/
+.hidden/
+.vscode/
 __pycache__/
+data/
+
+# mlflow
+*.db
+mlruns
+mlartifacts
+*.npy

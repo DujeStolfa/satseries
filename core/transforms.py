@@ -1,12 +1,30 @@
+from abc import ABC, abstractmethod
+from typing import List
+
 import torch
 import numpy as np
 
-from typing import Callable, List
+
+class Transform(ABC):
+
+    @property
+    def config_dict(self):
+        return dict(name=type(self).__name__)
+
+    @abstractmethod
+    def __call__(self, data):
+        raise NotImplementedError()
 
 
-class Compose:
-    def __init__(self, transforms: List[Callable]):
+class Compose(Transform):
+    def __init__(self, transforms: List[Transform]):
         self._transforms = transforms
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["transforms"] = [t.config_dict for t in self._transforms]
+        return cfg
 
     def __call__(self, x):
         for t in self._transforms:
@@ -14,29 +32,7 @@ class Compose:
         return x
 
 
-class Normalize:
-    def __init__(self, mean, std):
-
-        def _to_tensor(x):
-            if isinstance(x, torch.Tensor):
-                return x
-            if isinstance(x, np.ndarray):
-                return torch.from_numpy(x)
-            else:
-                return torch.Tensor(x)
-
-        self._mean = _to_tensor(mean)
-        self._std = _to_tensor(std)
-
-    def __call__(self, x):
-        if isinstance(x, (torch.Tensor, np.ndarray)):
-            return (x - self._mean) / self._std
-
-        x.images = (x.images - self._mean) / self._std
-        return x
-
-
-class ToTensor:
+class ToTensor(Transform):
     def __call__(self, x):
         if isinstance(x, np.ndarray):
             return torch.from_numpy(x).float()
@@ -48,11 +44,19 @@ class ToTensor:
         return x
 
 
-class Scale:
+class Scale(Transform):
     def __init__(self, factor, dim: int, indices: List[int] = None):
         self._factor = factor
         self._dim = dim
         self._indices = indices
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["factor"] = self._factor
+        cfg["dim"] = self._dim
+        cfg["indices"] = self._indices
+        return cfg
 
     def __call__(self, x):
         if isinstance(x, (torch.Tensor, np.ndarray)):
@@ -72,12 +76,22 @@ class Scale:
         return x
 
 
-class BiasedRandomCrop:
+class BiasedRandomCrop(Transform):
     def __init__(self, width, height, background=-1, seed=None):
         self._crop_width = width
         self._crop_height = height
         self._background = background
         self._rng = np.random.default_rng(seed)
+        self._seed = seed
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["width"] = self._crop_width
+        cfg["height"] = self._crop_height
+        cfg["background"] = self._background
+        cfg["seed"] = self._seed
+        return cfg
 
     def __call__(self, x):
         mask_data = x.mask.numpy() if hasattr(x.mask, "numpy") else x.mask
@@ -111,9 +125,15 @@ class BiasedRandomCrop:
         return x
 
 
-class BatchSpatialFlatten:
+class BatchSpatialFlatten(Transform):
     def __init__(self, batch_first: bool):
         self._batch_first = batch_first
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["batch_first"] = self._batch_first
+        return cfg
 
     def __call__(self, batch):
         new_images = batch.images  # [B, T, C, H, W]
@@ -152,7 +172,7 @@ class BatchSpatialFlatten:
         return batch
 
 
-class MonthlyRandomSample:
+class MonthlyRandomSample(Transform):
     def __init__(self, month_start, month_end, seed=None):
         if month_end < month_start:
             raise ValueError(f"End month can't be before start month")
@@ -166,6 +186,15 @@ class MonthlyRandomSample:
         self._month_start = month_start
         self._month_end = month_end
         self._rng = np.random.default_rng(seed)
+        self._seed = seed
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["month_start"] = self._month_start
+        cfg["month_end"] = self._month_end
+        cfg["seed"] = self._seed
+        return cfg
 
     def __call__(self, x):
         months = x.timesteps[:, 1]
@@ -205,12 +234,20 @@ class MonthlyRandomSample:
         return x
 
 
-class AddSpectralFeatures:
+class AddSpectralFeatures(Transform):
     def __init__(self, dim, r_idx, nir_idx):
         super().__init__()
         self._dim = dim
         self._r_idx = r_idx
         self._nir_idx = nir_idx
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["dim"] = self._dim
+        cfg["r_idx"] = self._r_idx
+        cfg["nir_idx"] = self._nir_idx
+        return cfg
 
     def __call__(self, x):
         if isinstance(x, (torch.Tensor, np.ndarray)):
@@ -239,7 +276,7 @@ class AddSpectralFeatures:
         return x
 
 
-class Normalize:
+class Normalize(Transform):
     def __init__(self, mean, std):
         def _to_tensor(x):
             if isinstance(x, torch.Tensor):
@@ -251,6 +288,13 @@ class Normalize:
 
         self._mean = _to_tensor(mean)[:, None, None]
         self._std = _to_tensor(std)[:, None, None]
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["mean"] = self._mean.tolist()
+        cfg["std"] = self._std.tolist()
+        return cfg
 
     def __call__(self, x):
         if isinstance(x, (torch.Tensor, np.ndarray)):
