@@ -2,3 +2,4 @@ earthengine-api
 ipykernel
 notebook
 rasterio
+scikit-learn

@@ -112,7 +112,7 @@ class BiasedRandomCrop:
 
 
 class BatchSpatialFlatten:
-    def __init__(self, batch_first):
+    def __init__(self, batch_first: bool):
         self._batch_first = batch_first
 
     def __call__(self, batch):
@@ -236,6 +236,27 @@ class AddSpectralFeatures:
             return torch.cat([x, ndvi.unsqueeze(self._dim)], dim=self._dim)
 
         x.images = torch.cat([x.images, ndvi.unsqueeze(self._dim)], dim=self._dim)
+        return x
+
+
+class Normalize:
+    def __init__(self, mean, std):
+        def _to_tensor(x):
+            if isinstance(x, torch.Tensor):
+                return x
+            if isinstance(x, np.ndarray):
+                return torch.from_numpy(x)
+            else:
+                return torch.Tensor(x)
+
+        self._mean = _to_tensor(mean)[:, None, None]
+        self._std = _to_tensor(std)[:, None, None]
+
+    def __call__(self, x):
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            return (x - self._mean) / self._std
+
+        x.images = (x.images - self._mean) / self._std
         return x
 
 
