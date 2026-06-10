@@ -19,11 +19,11 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     cfg_train = TrainingConfig(
-        lr=2e-3,
+        lr=5e-4,
         wd=1e-2,
         clip=2.0,
-        epochs=2,
-        batch_size=16,
+        epochs=10,
+        batch_size=8,
         batch_size_test=1,
     )
 
@@ -33,7 +33,7 @@ if __name__ == "__main__":
         "hidden_size": 32,
         "out_size": 5,
         "rnn_cell": "rnn",
-        "num_layers": 2,
+        "num_layers": 3,
         "dropout": 0.3,
         "bidirectional": True,
         "attend": True,
@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
     train_transforms = t.Compose(
         [
-            t.BiasedRandomCrop(width=8, height=8, seed=cfg_train.seed),
+            t.BiasedRandomCrop(width=100, height=100, seed=cfg_train.seed),
             t.MonthlyRandomSample(
                 month_start=4,
                 month_end=10,
@@ -75,7 +75,12 @@ if __name__ == "__main__":
             t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
         ]
     )
-    batch_transforms = t.BatchSpatialFlatten(batch_first=True)
+    batch_transforms = t.Compose(
+        [
+            t.BatchSpatialFlatten(batch_first=True),
+            t.BatchFilterOut(labels=-1),
+        ]
+    )
 
     train_ds = AugmentedDataset(core_train_ds, train_transforms)
     val_ds = AugmentedDataset(

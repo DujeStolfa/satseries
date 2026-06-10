@@ -9,8 +9,9 @@ from tqdm import tqdm
 def train(
     model: nn.Module,
     dataloader: data.DataLoader,
-    optimizer: optim.Optimizer,
     criterion: nn.Module,
+    optimizer: optim.Optimizer,
+    scheduler: optim.lr_scheduler.LRScheduler,
     device,
     clip,
     batch_transforms=None,
@@ -19,27 +20,23 @@ def train(
     train_loss = 0.0
     gt, preds = [], []
 
-    import pdb
-
     for item, lengths in tqdm(dataloader, "Training", ncols=0):
-
-        # pdb.set_trace()
 
         if batch_transforms is not None:
             item = batch_transforms(item)
 
-        x = item.images[item.mask != -1].to(device)  # privremeno
-        y = item.mask[item.mask != -1].to(device)
+        x = item.images.to(device)  # privremeno
+        y = item.mask.to(device)
 
         model.zero_grad()
 
         logits = model(x)
-        # pdb.set_trace()
         loss = criterion(logits, y.to(torch.uint8))
         loss.backward()
 
         nn.utils.clip_grad_norm_(model.parameters(), clip)
         optimizer.step()
+        scheduler.step()
 
         train_loss += loss.item()
         gt.append(y)
@@ -69,8 +66,8 @@ def evaluate(
             if batch_transforms is not None:
                 item = batch_transforms(item)
 
-            x = item.images[item.mask != -1].to(device)
-            y = item.mask[item.mask != -1].to(device)
+            x = item.images.to(device)
+            y = item.mask.to(device)
 
             logits = model(x)
             eval_loss += criterion(logits, y.to(torch.uint8))

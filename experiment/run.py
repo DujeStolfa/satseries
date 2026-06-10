@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.optim.lr_scheduler as sched
 from torch.utils.data import DataLoader
 
 from core.models import build_model
@@ -29,18 +30,27 @@ def load_datasets(cfg: ExperimentConfig, train_ds, val_ds, test_ds, collate_fn):
         batch_size=cfg.training.batch_size,
         shuffle=True,
         collate_fn=collate_fn,
+        pin_memory=True,
+        num_workers=4,
+        persistent_workers=True,
     )
     val_loader = DataLoader(
         val_ds,
         batch_size=cfg.training.batch_size_test,
         shuffle=False,
         collate_fn=collate_fn,
+        pin_memory=True,
+        num_workers=4,
+        persistent_workers=True,
     )
     test_loader = DataLoader(
         test_ds,
         batch_size=cfg.training.batch_size_test,
         shuffle=False,
         collate_fn=collate_fn,
+        pin_memory=True,
+        num_workers=4,
+        persistent_workers=True,
     )
     return train_loader, val_loader, test_loader
 
@@ -98,12 +108,16 @@ def run_experiment(
         )
 
         model = build_model(cfg.model).to(device)
+        criterion = nn.CrossEntropyLoss()
         optimizer = optim.Adam(
             model.parameters(),
             lr=cfg.training.lr,
             weight_decay=cfg.training.wd,
         )
-        criterion = nn.CrossEntropyLoss()
+        scheduler = sched.CosineAnnealingLR(
+            optimizer=optimizer,
+            T_max=cfg.training.epochs,
+        )
 
         for epoch in range(cfg.training.epochs):
             print(f"\nEpoch {epoch + 1}")
@@ -111,8 +125,9 @@ def run_experiment(
             train_loss, acc, f1 = train(
                 model,
                 train_loader,
-                optimizer,
                 criterion,
+                optimizer,
+                scheduler,
                 device,
                 cfg.training.clip,
                 batch_transforms,

@@ -304,6 +304,40 @@ class Normalize(Transform):
         return x
 
 
+class BatchFilterOut(Transform):
+    def __init__(self, labels):
+        self._labels = labels if isinstance(labels, list) else [labels]
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["labels"] = self._labels
+        return cfg
+
+    def __call__(self, x):
+        if isinstance(x.mask, np.ndarray):
+            mask = ~np.isin(x.mask, self._labels)
+        elif isinstance(x.mask, torch.Tensor):
+
+            def _to_tensor(x):
+                if isinstance(x, torch.Tensor):
+                    return x
+                if isinstance(x, np.ndarray):
+                    return torch.from_numpy(x)
+                else:
+                    return torch.Tensor(x)
+
+            mask = ~torch.isin(x.mask, _to_tensor(self._labels))
+        else:
+            mask = ~x.mask.isin(self._labels)
+
+        x.images = x.images[mask]
+        x.timesteps = x.timesteps[mask]
+        x.latlon = x.latlon[mask]
+        x.mask = x.mask[mask]
+        return x
+
+
 if __name__ == "__main__":
     import numpy as np
 
