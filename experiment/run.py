@@ -74,6 +74,7 @@ def run_experiment(
     collate_fn,
     device,
     batch_transforms,
+    class_weights,
 ):
     set_seed(cfg.training.seed)
     mlflow.set_tracking_uri("http://127.0.0.1:5000/")
@@ -108,7 +109,9 @@ def run_experiment(
         )
 
         model = build_model(cfg.model).to(device)
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(
+            weight=class_weights.to(device) if class_weights is not None else None
+        )
         optimizer = optim.Adam(
             model.parameters(),
             lr=cfg.training.lr,

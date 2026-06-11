@@ -1,4 +1,7 @@
+import argparse
 import time
+
+import numpy as np
 import torch
 
 import core.transforms as t
@@ -16,13 +19,17 @@ if __name__ == "__main__":
 
     lt.monkey_patch()
 
+    parser = argparse.ArgumentParser(description="Run experiment")
+    parser.add_argument("name")
+    args = parser.parse_args()
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     cfg_train = TrainingConfig(
         lr=5e-4,
         wd=1e-2,
         clip=2.0,
-        epochs=10,
+        epochs=50,
         batch_size=8,
         batch_size_test=1,
     )
@@ -41,16 +48,23 @@ if __name__ == "__main__":
 
     DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
     collate_fn = pad_collate_fn
+    ds_instance = SatelliteTimeSeriesDataset.DatasetInstance.REGIONAL
     core_train_ds = SatelliteTimeSeriesDataset(
         DATASET_ROOT,
-        SatelliteTimeSeriesDataset.DatasetInstance.REGIONAL,
+        ds_instance,
         DatasetSplit.TRAIN,
     )
     data_stats = core_train_ds.get_train_stats()
 
+    # class 4 is empty
+    class_freq = 1 / torch.Tensor(data_stats["class_counts"][1:-1])
+    class_weights = class_freq / class_freq.norm()
+    class_weights = torch.concat((class_weights, torch.Tensor([0])))
+    # class_weights = None
+
     train_transforms = t.Compose(
         [
-            t.BiasedRandomCrop(width=100, height=100, seed=cfg_train.seed),
+            # t.BiasedRandomCrop(width=100, height=100, seed=cfg_train.seed),
             t.MonthlyRandomSample(
                 month_start=4,
                 month_end=10,
@@ -86,7 +100,7 @@ if __name__ == "__main__":
     val_ds = AugmentedDataset(
         SatelliteTimeSeriesDataset(
             DATASET_ROOT,
-            SatelliteTimeSeriesDataset.DatasetInstance.REGIONAL,
+            ds_instance,
             DatasetSplit.VALIDATION,
         ),
         test_transforms,
@@ -94,19 +108,23 @@ if __name__ == "__main__":
     test_ds = AugmentedDataset(
         SatelliteTimeSeriesDataset(
             DATASET_ROOT,
-            SatelliteTimeSeriesDataset.DatasetInstance.REGIONAL,
+            ds_instance,
             DatasetSplit.TEST,
         ),
         test_transforms,
     )
 
     cfg = ExperimentConfig(
-        name="Dev experiment",
+        name=args.name,
         training=cfg_train,
         model=cfg_model,
         data={
             "train": train_ds.config_dict,
             "collate_fn": None if collate_fn is None else collate_fn.__name__,
+            "instance": ds_instance.value,
+            "class_weights": (
+                class_weights.tolist() if class_weights is not None else None
+            ),
         },
         transforms={
             "train": train_transforms.config_dict,
@@ -124,4 +142,5 @@ if __name__ == "__main__":
         collate_fn,
         device,
         batch_transforms,
+        class_weights,
     )
