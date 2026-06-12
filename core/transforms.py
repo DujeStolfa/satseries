@@ -5,6 +5,15 @@ import torch
 import numpy as np
 
 
+def _to_tensor(x) -> torch.Tensor:
+    if isinstance(x, torch.Tensor):
+        return x
+    if isinstance(x, np.ndarray):
+        return torch.from_numpy(x)
+    else:
+        return torch.Tensor(x)
+
+
 class Transform(ABC):
 
     @property
@@ -306,7 +315,7 @@ class Normalize(Transform):
 
 class BatchFilterOut(Transform):
     def __init__(self, labels):
-        self._labels = labels if isinstance(labels, list) else [labels]
+        self._labels = _to_tensor(labels if not isinstance(labels, int) else [labels])
 
     @property
     def config_dict(self):
@@ -316,18 +325,9 @@ class BatchFilterOut(Transform):
 
     def __call__(self, x):
         if isinstance(x.mask, np.ndarray):
-            mask = ~np.isin(x.mask, self._labels)
+            mask = ~np.isin(x.mask, self._labels.numpy())
         elif isinstance(x.mask, torch.Tensor):
-
-            def _to_tensor(x):
-                if isinstance(x, torch.Tensor):
-                    return x
-                if isinstance(x, np.ndarray):
-                    return torch.from_numpy(x)
-                else:
-                    return torch.Tensor(x)
-
-            mask = ~torch.isin(x.mask, _to_tensor(self._labels))
+            mask = ~torch.isin(x.mask, self._labels)
         else:
             mask = ~x.mask.isin(self._labels)
 
@@ -335,6 +335,46 @@ class BatchFilterOut(Transform):
         x.timesteps = x.timesteps[mask]
         x.latlon = x.latlon[mask]
         x.mask = x.mask[mask]
+        return x
+
+
+class BatchUndersamplingBalancer(Transform):
+    def __init__(self, reference_cls: int, undersample_cls: List[int]):
+        self._reference = reference_cls
+        self._undersample = _to_tensor(
+            undersample_cls
+            if not isinstance(undersample_cls, int)
+            else [undersample_cls]
+        )
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["reference_cls"] = self._reference
+        cfg["undersample_cls"] = self._undersample.tolist()
+        return cfg
+
+    def __call__(self, x):
+        ref_mask = torch.isin(x.mask, self._reference)
+        ref_count = ref_mask.sum().item()
+
+        # dodijeli svakom primjeru nasumicnu vrijednost
+        rand = torch.rand(len(x.mask), device=x.mask.device)
+        keep = torch.ones(len(x.mask), dtype=torch.bool, device=x.mask.device)
+
+        for cls in self._undersample:
+            idx = torch.nonzero(x.mask == cls, as_tuple=True)[0]
+
+            # odaberi `ref_count` primjera iz svakog razreda s najvecom pridruzenom vrijednosti
+            if len(idx) > ref_count:
+                _, top = torch.topk(rand[idx], ref_count)
+                keep[idx] = False
+                keep[idx[top]] = True
+
+        x.images = x.images[keep]
+        x.timesteps = x.timesteps[keep]
+        x.latlon = x.latlon[keep]
+        x.mask = x.mask[keep]
         return x
 
 
