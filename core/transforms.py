@@ -358,6 +358,9 @@ class BatchUndersamplingBalancer(Transform):
         ref_mask = torch.isin(x.mask, self._reference)
         ref_count = ref_mask.sum().item()
 
+        if ref_count == 0:
+            return x
+
         # dodijeli svakom primjeru nasumicnu vrijednost
         rand = torch.rand(len(x.mask), device=x.mask.device)
         keep = torch.ones(len(x.mask), dtype=torch.bool, device=x.mask.device)
