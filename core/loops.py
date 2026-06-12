@@ -25,13 +25,13 @@ def train(
         if batch_transforms is not None:
             item = batch_transforms(item)
 
-        x = item.images.to(device)  # privremeno
+        x = item.images.to(device)
         y = item.mask.to(device)
 
         model.zero_grad()
 
         logits = model(x)
-        loss = criterion(logits, y.to(torch.uint8))
+        loss = criterion(logits, y.to(torch.long))
         loss.backward()
 
         nn.utils.clip_grad_norm_(model.parameters(), clip)
@@ -70,7 +70,7 @@ def evaluate(
             y = item.mask.to(device)
 
             logits = model(x)
-            eval_loss += criterion(logits, y.to(torch.uint8))
+            eval_loss += criterion(logits, y.to(torch.long))
 
             gt.append(y)
             preds.append(torch.argmax(logits, dim=1))
