@@ -32,3 +32,13 @@ class FocalLoss(nn.Module):
             return loss.sum()
 
         return loss
+
+
+def build_loss(cfg: dict) -> nn.Module:
+    name = cfg.pop("name")
+
+    if name == "FocalLoss":
+        return FocalLoss(**cfg)
+
+    cls = getattr(nn, name)
+    return cls(**cfg)

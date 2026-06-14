@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data as data
 import torch.optim as optim
-from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
+from sklearn.metrics import accuracy_score, f1_score
 from tqdm import tqdm
 
 
@@ -21,7 +21,6 @@ def train(
     gt, preds = [], []
 
     for item, lengths in tqdm(dataloader, "Training", ncols=0):
-
         if batch_transforms is not None:
             item = batch_transforms(item)
 
@@ -80,5 +79,4 @@ def evaluate(
 
     acc = accuracy_score(gt, preds)
     f1 = f1_score(gt, preds, average=None)
-    confmat = confusion_matrix(gt, preds, normalize="true")
-    return eval_loss / len(dataloader), acc, f1, confmat
+    return eval_loss / len(dataloader), acc, f1

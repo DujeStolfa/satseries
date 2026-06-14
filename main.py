@@ -1,7 +1,7 @@
 import argparse
 import time
 
-import numpy as np
+import lovely_tensors as lt
 import torch
 
 import core.transforms as t
@@ -15,24 +15,31 @@ from experiment.configs import ExperimentConfig, TrainingConfig
 from experiment.run import run_experiment
 
 if __name__ == "__main__":
-    import lovely_tensors as lt
-
-    lt.monkey_patch()
-
     parser = argparse.ArgumentParser(description="Run experiment")
     parser.add_argument("name")
     args = parser.parse_args()
 
+    lt.monkey_patch()
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     cfg_train = TrainingConfig(
-        lr=5e-4,
-        wd=1e-2,
         clip=2.0,
-        epochs=50,
-        batch_size=8,
-        batch_size_test=1,
+        epochs=1,
+        batch_size=16,
+        batch_size_test=8,
     )
+
+    cfg_optim = {
+        "name": "Adam",
+        "lr": 5e-4,
+        "weight_decay": 1e-2,
+    }
+
+    cfg_scheduler = {
+        "name": "CosineAnnealingLR",
+        "T_max": cfg_train.epochs,
+    }
 
     cfg_model = {
         "name": "recurrent",
@@ -43,7 +50,7 @@ if __name__ == "__main__":
         "num_layers": 3,
         "dropout": 0.3,
         "bidirectional": True,
-        "attend": True,
+        "attend": False,
     }
 
     DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
@@ -57,10 +64,19 @@ if __name__ == "__main__":
     data_stats = core_train_ds.get_train_stats()
 
     # class 4 is empty
-    class_freq = 1 / torch.Tensor(data_stats["class_counts"][1:-1])
+    class_counts = torch.Tensor(
+        data_stats["class_counts"][1:-1]
+    )  # TODO: spojit razrede
+    class_counts[0] = class_counts[1]  # poduzorkuj 0 na 1
+
+    class_freq = 1 / class_counts
     class_weights = class_freq / class_freq.norm()
     class_weights = torch.concat((class_weights, torch.Tensor([0])))
-    # class_weights = None
+
+    cfg_loss = {
+        "name": "CrossEntropyLoss",
+        "weight": class_weights.to(device),
+    }
 
     train_transforms = t.Compose(
         [
@@ -89,7 +105,14 @@ if __name__ == "__main__":
             t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
         ]
     )
-    batch_transforms = t.Compose(
+    batch_transforms_train = t.Compose(
+        [
+            t.BatchSpatialFlatten(batch_first=True),
+            t.BatchFilterOut(labels=-1),
+            t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
+        ]
+    )
+    batch_transforms_test = t.Compose(
         [
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
@@ -118,21 +141,24 @@ if __name__ == "__main__":
         name=args.name,
         training=cfg_train,
         model=cfg_model,
+        loss=cfg_loss,
+        optimizer=cfg_optim,
+        scheduler=cfg_scheduler,
         data={
             "train": train_ds.config_dict,
             "collate_fn": None if collate_fn is None else collate_fn.__name__,
             "instance": ds_instance.value,
-            "class_weights": (
-                class_weights.tolist() if class_weights is not None else None
-            ),
         },
         transforms={
             "train": train_transforms.config_dict,
             "testval": test_transforms.config_dict,
-            "batch": batch_transforms.config_dict,
+            "batch_train": batch_transforms_train.config_dict,
+            "batch_testval": batch_transforms_test.config_dict,
         },
     )
+
     run_name = time.strftime(f"%Y%m%d_%H%M", time.gmtime())
+
     run_experiment(
         run_name,
         cfg,
@@ -141,6 +167,6 @@ if __name__ == "__main__":
         test_ds,
         collate_fn,
         device,
-        batch_transforms,
-        class_weights,
+        batch_transforms_train,
+        batch_transforms_test,
     )

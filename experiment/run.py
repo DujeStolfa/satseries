@@ -4,13 +4,12 @@ from dataclasses import asdict
 import mlflow
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.optim.lr_scheduler as sched
 from torch.utils.data import DataLoader
 
-from core.models import build_model
 from core.loops import train, evaluate
+from core.losses import build_loss
+from core.models import build_model
+from core.utils import build_optimizer, build_scheduler
 from experiment.configs import ExperimentConfig
 
 
@@ -31,8 +30,8 @@ def load_datasets(cfg: ExperimentConfig, train_ds, val_ds, test_ds, collate_fn):
         shuffle=True,
         collate_fn=collate_fn,
         pin_memory=True,
-        num_workers=4,
-        persistent_workers=True,
+        num_workers=cfg.training.num_workers,
+        persistent_workers=cfg.training.num_workers > 0,
     )
     val_loader = DataLoader(
         val_ds,
@@ -40,8 +39,8 @@ def load_datasets(cfg: ExperimentConfig, train_ds, val_ds, test_ds, collate_fn):
         shuffle=False,
         collate_fn=collate_fn,
         pin_memory=True,
-        num_workers=4,
-        persistent_workers=True,
+        num_workers=cfg.training.num_workers,
+        persistent_workers=cfg.training.num_workers > 0,
     )
     test_loader = DataLoader(
         test_ds,
@@ -49,8 +48,8 @@ def load_datasets(cfg: ExperimentConfig, train_ds, val_ds, test_ds, collate_fn):
         shuffle=False,
         collate_fn=collate_fn,
         pin_memory=True,
-        num_workers=4,
-        persistent_workers=True,
+        num_workers=cfg.training.num_workers,
+        persistent_workers=cfg.training.num_workers > 0,
     )
     return train_loader, val_loader, test_loader
 
@@ -65,6 +64,16 @@ def log_eval(split: str, loss, acc, f1, **kwargs):
         mlflow.log_metric(f"{split}_f1_class_{i}", v, **kwargs)
 
 
+def log_dict_with_name(cfg: ExperimentConfig, attr_name):
+    data_dict = getattr(cfg, attr_name)
+    mlflow.log_params(
+        {
+            attr_name: data_dict["name"],
+            **{f"{attr_name}.{k}": v for k, v in data_dict.items() if k != "name"},
+        }
+    )
+
+
 def run_experiment(
     run_name,
     cfg: ExperimentConfig,
@@ -73,20 +82,18 @@ def run_experiment(
     test_ds,
     collate_fn,
     device,
-    batch_transforms,
-    class_weights,
+    batch_transforms_train,
+    batch_transforms_test,
 ):
     set_seed(cfg.training.seed)
     mlflow.set_tracking_uri("http://127.0.0.1:5000/")
     mlflow.set_experiment(cfg.name)
 
     with mlflow.start_run(run_name=run_name):
-        mlflow.log_params(
-            {
-                "model": cfg.model["name"],
-                **{f"model.{k}": v for k, v in cfg.model.items() if k != "name"},
-            }
-        )
+        log_dict_with_name(cfg, "model")
+        log_dict_with_name(cfg, "loss")
+        log_dict_with_name(cfg, "optimizer")
+        log_dict_with_name(cfg, "scheduler")
         for key, cfg_t in cfg.transforms.items():
             mlflow.log_params(
                 {
@@ -99,7 +106,7 @@ def run_experiment(
             )
         mlflow.log_params(
             {
-                **{f"data.{k}": v for k, v in cfg.data.items() if k != "name"},
+                **{f"data.{k}": v for k, v in cfg.data.items()},
             }
         )
         mlflow.log_params(asdict(cfg.training))
@@ -109,18 +116,9 @@ def run_experiment(
         )
 
         model = build_model(cfg.model).to(device)
-        criterion = nn.CrossEntropyLoss(
-            weight=class_weights.to(device) if class_weights is not None else None
-        )
-        optimizer = optim.Adam(
-            model.parameters(),
-            lr=cfg.training.lr,
-            weight_decay=cfg.training.wd,
-        )
-        scheduler = sched.CosineAnnealingLR(
-            optimizer=optimizer,
-            T_max=cfg.training.epochs,
-        )
+        criterion = build_loss(cfg.loss)
+        optimizer = build_optimizer(model.parameters(), cfg.optimizer)
+        scheduler = build_scheduler(optimizer, cfg.scheduler)
 
         for epoch in range(cfg.training.epochs):
             print(f"\nEpoch {epoch + 1}")
@@ -133,25 +131,25 @@ def run_experiment(
                 scheduler,
                 device,
                 cfg.training.clip,
-                batch_transforms,
+                batch_transforms_train,
             )
             log_eval("train", train_loss, acc, f1, step=epoch)
 
-            val_loss, acc, f1, conf_mat = evaluate(
+            val_loss, acc, f1 = evaluate(
                 model,
                 val_loader,
                 criterion,
                 device,
-                batch_transforms,
+                batch_transforms_test,
             )
             log_eval("val", val_loss, acc, f1, step=epoch)
 
-        test_loss, acc, f1, conf_mat = evaluate(
+        test_loss, acc, f1 = evaluate(
             model,
             test_loader,
             criterion,
             device,
-            batch_transforms,
+            batch_transforms_test,
         )
         log_eval("test", test_loss, acc, f1, step=epoch)
 
