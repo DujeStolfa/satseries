@@ -2,10 +2,12 @@ import argparse
 import time
 
 import lovely_tensors as lt
+import numpy as np
 import torch
 
 import core.transforms as t
 from core.datasets import (
+    BalancedBatchSampler,
     SatelliteTimeSeriesDataset,
     DatasetSplit,
     AugmentedDataset,
@@ -13,6 +15,15 @@ from core.datasets import (
 )
 from experiment.configs import ExperimentConfig, TrainingConfig
 from experiment.run import run_experiment
+
+
+def ratios_to_posneg_indices(ratios, positive_labels):
+    ratios = ratios.T
+    positives = np.any(ratios[positive_labels] > 0, axis=0)
+    positive_indices = np.argwhere(positives).flatten()
+    negative_indices = np.argwhere(~positives).flatten()
+    return positive_indices, negative_indices
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run experiment")
@@ -25,9 +36,10 @@ if __name__ == "__main__":
 
     cfg_train = TrainingConfig(
         clip=2.0,
-        epochs=1,
+        epochs=50,
         batch_size=16,
         batch_size_test=8,
+        num_workers=4,
     )
 
     cfg_optim = {
@@ -74,9 +86,25 @@ if __name__ == "__main__":
     class_weights = torch.concat((class_weights, torch.Tensor([0])))
 
     cfg_loss = {
-        "name": "CrossEntropyLoss",
+        "name": "SymmetricCrossEntropyLoss",
         "weight": class_weights.to(device),
+        "alpha": 0.1,
+        "beta": 1,
+        "num_classes": 5,
+        # "gamma": 2,
     }
+
+    pos_indices, neg_indices = ratios_to_posneg_indices(
+        ratios=core_train_ds.get_class_ratios(),
+        positive_labels=[1, 2, 3, 4],
+    )
+    batch_sampler = BalancedBatchSampler(
+        pos_indices,
+        neg_indices,
+        batch_size=cfg_train.batch_size,
+        positive_ratio=0.5,
+        seed=cfg_train.seed,
+    )
 
     train_transforms = t.Compose(
         [
@@ -155,9 +183,10 @@ if __name__ == "__main__":
             "batch_train": batch_transforms_train.config_dict,
             "batch_testval": batch_transforms_test.config_dict,
         },
+        batch_sampler=None if batch_sampler is None else batch_sampler.config_dict,
     )
 
-    run_name = time.strftime(f"%Y%m%d_%H%M", time.gmtime())
+    run_name = time.strftime(f"%Y%m%d_%H%M", time.localtime())
 
     run_experiment(
         run_name,
@@ -169,4 +198,5 @@ if __name__ == "__main__":
         device,
         batch_transforms_train,
         batch_transforms_test,
+        batch_sampler,
     )

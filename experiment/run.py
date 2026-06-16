@@ -23,16 +23,29 @@ def set_seed(seed):
     # Doesn't set seeds for core.transforms
 
 
-def load_datasets(cfg: ExperimentConfig, train_ds, val_ds, test_ds, collate_fn):
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=cfg.training.batch_size,
-        shuffle=True,
-        collate_fn=collate_fn,
-        pin_memory=True,
-        num_workers=cfg.training.num_workers,
-        persistent_workers=cfg.training.num_workers > 0,
-    )
+def load_datasets(
+    cfg: ExperimentConfig, train_ds, val_ds, test_ds, collate_fn, batch_sampler
+):
+    if batch_sampler is None:
+        train_loader = DataLoader(
+            train_ds,
+            batch_size=cfg.training.batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
+            pin_memory=True,
+            num_workers=cfg.training.num_workers,
+            persistent_workers=cfg.training.num_workers > 0,
+        )
+    else:
+        train_loader = DataLoader(
+            train_ds,
+            batch_sampler=batch_sampler,
+            collate_fn=collate_fn,
+            pin_memory=True,
+            num_workers=cfg.training.num_workers,
+            persistent_workers=cfg.training.num_workers > 0,
+        )
+
     val_loader = DataLoader(
         val_ds,
         batch_size=cfg.training.batch_size_test,
@@ -66,12 +79,15 @@ def log_eval(split: str, loss, acc, f1, **kwargs):
 
 def log_dict_with_name(cfg: ExperimentConfig, attr_name):
     data_dict = getattr(cfg, attr_name)
-    mlflow.log_params(
-        {
-            attr_name: data_dict["name"],
-            **{f"{attr_name}.{k}": v for k, v in data_dict.items() if k != "name"},
-        }
-    )
+    if data_dict is not None:
+        mlflow.log_params(
+            {
+                attr_name: data_dict["name"],
+                **{f"{attr_name}.{k}": v for k, v in data_dict.items() if k != "name"},
+            }
+        )
+    else:
+        mlflow.log_param(attr_name, None)
 
 
 def run_experiment(
@@ -84,6 +100,7 @@ def run_experiment(
     device,
     batch_transforms_train,
     batch_transforms_test,
+    batch_sampler,
 ):
     set_seed(cfg.training.seed)
     mlflow.set_tracking_uri("http://127.0.0.1:5000/")
@@ -94,6 +111,8 @@ def run_experiment(
         log_dict_with_name(cfg, "loss")
         log_dict_with_name(cfg, "optimizer")
         log_dict_with_name(cfg, "scheduler")
+        log_dict_with_name(cfg, "batch_sampler")
+        mlflow.log_params(asdict(cfg.training))
         for key, cfg_t in cfg.transforms.items():
             mlflow.log_params(
                 {
@@ -104,15 +123,18 @@ def run_experiment(
                     },
                 }
             )
-        mlflow.log_params(
-            {
-                **{f"data.{k}": v for k, v in cfg.data.items()},
-            }
-        )
-        mlflow.log_params(asdict(cfg.training))
+        for key, val in cfg.data.items():
+            if not isinstance(val, dict):
+                mlflow.log_param(f"data.{key}", val)
+            else:
+                mlflow.log_params(
+                    {
+                        **{f"data.{key}.{k}": v for k, v in val.items()},
+                    }
+                )
 
         train_loader, val_loader, test_loader = load_datasets(
-            cfg, train_ds, val_ds, test_ds, collate_fn
+            cfg, train_ds, val_ds, test_ds, collate_fn, batch_sampler
         )
 
         model = build_model(cfg.model).to(device)

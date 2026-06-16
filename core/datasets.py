@@ -178,9 +178,9 @@ class BalancedBatchSampler(data.BatchSampler):
     def config_dict(self):
         return dict(
             name=type(self).__name__,
-            batch_size=self.batch_size,
+            batch_size=self._batch_size,
             positive_ratio=self._positive_ratio,
-            drop_last=self.drop_last,
+            drop_last=self._drop_last,
             seed=self._seed,
         )
 

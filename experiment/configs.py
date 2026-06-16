@@ -21,3 +21,4 @@ class ExperimentConfig:
     training: TrainingConfig
     data: dict
     transforms: dict
+    batch_sampler: dict
