@@ -4,6 +4,8 @@ from typing import List
 import torch
 import numpy as np
 
+from core.datasets import PrestoDatasetSample
+
 
 def _to_tensor(x) -> torch.Tensor:
     if isinstance(x, torch.Tensor):
@@ -47,7 +49,7 @@ class ToTensor(Transform):
             return torch.from_numpy(x).float()
 
         x.images = torch.from_numpy(x.images).float()
-        x.mask = torch.from_numpy(x.mask)
+        x.target = torch.from_numpy(x.target)
         x.timesteps = torch.from_numpy(x.timesteps).to(torch.int16)
         x.latlon = torch.from_numpy(x.latlon).float()
         return x
@@ -103,10 +105,10 @@ class BiasedRandomCrop(Transform):
         return cfg
 
     def __call__(self, x):
-        mask_data = x.mask.numpy() if hasattr(x.mask, "numpy") else x.mask
-        valid_pixels = np.argwhere(mask_data != self._background)
+        target_data = x.target.numpy() if hasattr(x.target, "numpy") else x.target
+        valid_pixels = np.argwhere(target_data != self._background)
 
-        img_height, img_width = x.mask.shape[-2:]
+        img_height, img_width = x.target.shape[-2:]
 
         if len(valid_pixels) == 0:
             top = self._rng.integers(0, img_height - self._crop_height + 1)
@@ -127,7 +129,7 @@ class BiasedRandomCrop(Transform):
         x.images = x.images[
             ..., top : top + self._crop_height, left : left + self._crop_width
         ]
-        x.mask = x.mask[
+        x.target = x.target[
             ..., top : top + self._crop_height, left : left + self._crop_width
         ]
 
@@ -146,7 +148,7 @@ class BatchSpatialFlatten(Transform):
 
     def __call__(self, batch):
         new_images = batch.images  # [B, T, C, H, W]
-        new_mask = batch.mask  # [B, H, W]
+        new_target = batch.target  # [B, H, W]
         new_timesteps = batch.timesteps  # [B, T, 4 (YMDH)]
         new_latlon = batch.latlon  # [B, 2]
 
@@ -158,7 +160,7 @@ class BatchSpatialFlatten(Transform):
         b, t, c, h, w = shape
 
         new_images = new_images.permute(0, 3, 4, 1, 2).reshape(b * h * w, t, c)
-        new_mask = new_mask.reshape(b * h * w)
+        new_target = new_target.reshape(b * h * w)
         new_timesteps = (
             new_timesteps[:, None, None, :, :]
             .expand(-1, h, w, -1, -1)
@@ -175,7 +177,7 @@ class BatchSpatialFlatten(Transform):
             new_timesteps = new_timesteps.swapaxes(0, 1)
 
         batch.images = new_images
-        batch.mask = new_mask
+        batch.target = new_target
         batch.timesteps = new_timesteps
         batch.latlon = new_latlon
         return batch
@@ -324,17 +326,17 @@ class BatchFilterOut(Transform):
         return cfg
 
     def __call__(self, x):
-        if isinstance(x.mask, np.ndarray):
-            mask = ~np.isin(x.mask, self._labels.numpy())
-        elif isinstance(x.mask, torch.Tensor):
-            mask = ~torch.isin(x.mask, self._labels)
+        if isinstance(x.target, np.ndarray):
+            mask = ~np.isin(x.target, self._labels.numpy())
+        elif isinstance(x.target, torch.Tensor):
+            mask = ~torch.isin(x.target, self._labels)
         else:
-            mask = ~x.mask.isin(self._labels)
+            mask = ~x.target.isin(self._labels)
 
         x.images = x.images[mask]
         x.timesteps = x.timesteps[mask]
         x.latlon = x.latlon[mask]
-        x.mask = x.mask[mask]
+        x.target = x.target[mask]
         return x
 
 
@@ -355,18 +357,18 @@ class BatchUndersamplingBalancer(Transform):
         return cfg
 
     def __call__(self, x):
-        ref_mask = torch.isin(x.mask, self._reference)
+        ref_mask = torch.isin(x.target, self._reference)
         ref_count = ref_mask.sum().item()
 
         if ref_count == 0:
             return x
 
         # dodijeli svakom primjeru nasumicnu vrijednost
-        rand = torch.rand(len(x.mask), device=x.mask.device)
-        keep = torch.ones(len(x.mask), dtype=torch.bool, device=x.mask.device)
+        rand = torch.rand(len(x.target), device=x.target.device)
+        keep = torch.ones(len(x.target), dtype=torch.bool, device=x.target.device)
 
         for cls in self._undersample:
-            idx = torch.nonzero(x.mask == cls, as_tuple=True)[0]
+            idx = torch.nonzero(x.target == cls, as_tuple=True)[0]
 
             # odaberi `ref_count` primjera iz svakog razreda s najvecom pridruzenom vrijednosti
             if len(idx) > ref_count:
@@ -377,8 +379,33 @@ class BatchUndersamplingBalancer(Transform):
         x.images = x.images[keep]
         x.timesteps = x.timesteps[keep]
         x.latlon = x.latlon[keep]
-        x.mask = x.mask[keep]
+        x.target = x.target[keep]
         return x
+
+
+class ToPrestoFormat(Transform):
+    def __init__(self):
+        self._out_channels = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16]
+        self._in_channels = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12]
+
+    def __call__(self, x) -> PrestoDatasetSample:
+        b, t, _ = x.images.shape
+
+        series = torch.zeros((b, t, 17), dtype=x.images.dtype)
+        series[..., self._out_channels] = x.images[..., self._in_channels]
+
+        mask = torch.ones((b, t, 17))
+        mask[..., self._out_channels] = 0
+
+        return PrestoDatasetSample(
+            series=series,
+            target=x.target,
+            timesteps=x.timesteps,
+            latlon=x.latlon,
+            dynamic_world=torch.ones((b, t), dtype=torch.long) * 9,
+            mask=mask,
+            month=x.timesteps[..., 0, 1].to(torch.long),
+        )
 
 
 if __name__ == "__main__":

@@ -103,7 +103,7 @@ def run_experiment(
     batch_sampler,
 ):
     set_seed(cfg.training.seed)
-    mlflow.set_tracking_uri("http://127.0.0.1:5000/")
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
     mlflow.set_experiment(cfg.name)
 
     with mlflow.start_run(run_name=run_name):
@@ -138,6 +138,14 @@ def run_experiment(
         )
 
         model = build_model(cfg.model).to(device)
+        if "weights_path" in cfg.model:
+            model.load_state_dict(
+                torch.load(
+                    cfg.model["weights_path"],
+                    map_location=device,
+                )
+            )
+
         criterion = build_loss(cfg.loss)
         optimizer = build_optimizer(model.parameters(), cfg.optimizer)
         scheduler = build_scheduler(optimizer, cfg.scheduler)

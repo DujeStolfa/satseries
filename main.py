@@ -36,15 +36,15 @@ if __name__ == "__main__":
 
     cfg_train = TrainingConfig(
         clip=2.0,
-        epochs=50,
-        batch_size=16,
+        epochs=10,
+        batch_size=8,
         batch_size_test=8,
         num_workers=4,
     )
 
     cfg_optim = {
         "name": "Adam",
-        "lr": 5e-4,
+        "lr": 1e-3,
         "weight_decay": 1e-2,
     }
 
@@ -53,16 +53,22 @@ if __name__ == "__main__":
         "T_max": cfg_train.epochs,
     }
 
+    # cfg_model = {
+    #     "name": "recurrent",
+    #     "in_size": 13,
+    #     "hidden_size": 32,
+    #     "out_size": 5,
+    #     "rnn_cell": "rnn",
+    #     "num_layers": 3,
+    #     "dropout": 0.3,
+    #     "bidirectional": True,
+    #     "attend": False,
+    # }
     cfg_model = {
-        "name": "recurrent",
-        "in_size": 13,
-        "hidden_size": 32,
+        "name": "presto",
+        "hidden_size": 128,
         "out_size": 5,
-        "rnn_cell": "rnn",
-        "num_layers": 3,
-        "dropout": 0.3,
-        "bidirectional": True,
-        "attend": False,
+        "weights_path": "data\\presto_classifier_base.pt",
     }
 
     DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
@@ -84,6 +90,7 @@ if __name__ == "__main__":
     class_freq = 1 / class_counts
     class_weights = class_freq / class_freq.norm()
     class_weights = torch.concat((class_weights, torch.Tensor([0])))
+    # class_weights = None
 
     cfg_loss = {
         "name": "SymmetricCrossEntropyLoss",
@@ -105,6 +112,7 @@ if __name__ == "__main__":
         positive_ratio=0.5,
         seed=cfg_train.seed,
     )
+    # batch_sampler = None
 
     train_transforms = t.Compose(
         [
@@ -117,7 +125,7 @@ if __name__ == "__main__":
             t.ToTensor(),
             t.Scale(1e-4, dim=1),
             t.AddSpectralFeatures(dim=1, r_idx=3, nir_idx=7),
-            t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
+            # t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
         ]
     )
     test_transforms = t.Compose(
@@ -130,7 +138,7 @@ if __name__ == "__main__":
             t.ToTensor(),
             t.Scale(1e-4, dim=1),
             t.AddSpectralFeatures(dim=1, r_idx=3, nir_idx=7),
-            t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
+            # t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
         ]
     )
     batch_transforms_train = t.Compose(
@@ -138,12 +146,14 @@ if __name__ == "__main__":
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
             t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
+            t.ToPrestoFormat(),
         ]
     )
     batch_transforms_test = t.Compose(
         [
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
+            t.ToPrestoFormat(),
         ]
     )
 

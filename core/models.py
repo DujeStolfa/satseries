@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import core.presto as presto
+from core.datasets import PrestoDatasetSample
+
 
 class RNNModel(nn.Module):
     def __init__(
@@ -45,7 +48,7 @@ class RNNModel(nn.Module):
 
     def forward(self, x):
         # Transponiraj ulaze [B, T, H] > [T, B, H]
-        x = torch.transpose(x, 0, 1)
+        x = torch.transpose(x.images, 0, 1)
 
         # TODO: pack_padded_sequence?
 
@@ -95,6 +98,28 @@ class BahdanauAttention(nn.Module):
         return out_attn, alpha
 
 
+class PrestoClassifier(nn.Module):
+    def __init__(self, hidden_size, out_size):
+        super().__init__()
+        self.encoder = presto.Encoder(embedding_size=hidden_size, mlp_ratio=4)
+        for param in self.encoder.parameters():
+            param.requires_grad = False
+
+        self.logits = nn.Linear(hidden_size, out_size)
+
+    def forward(self, x: PrestoDatasetSample):
+        embeddings = self.encoder(
+            x=x.series,
+            dynamic_world=x.dynamic_world,
+            latlons=x.latlon,
+            mask=x.mask,
+            month=x.month,
+            eval_task=True,
+        )
+        logits = self.logits(embeddings)
+        return logits
+
+
 def build_model(cfg: dict) -> nn.Module:
     name = cfg["name"]
 
@@ -113,6 +138,12 @@ def build_model(cfg: dict) -> nn.Module:
             cfg["dropout"],
             cfg["bidirectional"],
             cfg["attend"],
+        )
+
+    if name == "presto":
+        return PrestoClassifier(
+            cfg["hidden_size"],
+            cfg["out_size"],
         )
 
     raise ValueError(f"Unknown model: {name}")

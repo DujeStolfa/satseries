@@ -24,13 +24,11 @@ def train(
         if batch_transforms is not None:
             item = batch_transforms(item)
 
-        x = item.images.to(device)
-        y = item.mask.to(device)
-
+        item.to_device(device)
         model.zero_grad()
 
-        logits = model(x)
-        loss = criterion(logits, y.to(torch.long))
+        logits = model(item)
+        loss = criterion(logits, item.target.to(torch.long))
         loss.backward()
 
         nn.utils.clip_grad_norm_(model.parameters(), clip)
@@ -38,7 +36,7 @@ def train(
         scheduler.step()
 
         train_loss += loss.item()
-        gt.append(y)
+        gt.append(item.target)
         preds.append(torch.argmax(logits, dim=1))
 
     gt = torch.cat(gt).cpu().numpy()
@@ -65,13 +63,12 @@ def evaluate(
             if batch_transforms is not None:
                 item = batch_transforms(item)
 
-            x = item.images.to(device)
-            y = item.mask.to(device)
+            item.to_device(device)
 
-            logits = model(x)
-            eval_loss += criterion(logits, y.to(torch.long))
+            logits = model(item)
+            eval_loss += criterion(logits, item.target.to(torch.long))
 
-            gt.append(y)
+            gt.append(item.target)
             preds.append(torch.argmax(logits, dim=1))
 
     gt = torch.cat(gt).cpu().numpy()

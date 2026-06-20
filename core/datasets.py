@@ -23,9 +23,39 @@ class DatasetSplit(StrEnum):
 @dataclass
 class TimeSeriesDatasetSample:
     images: torch.Tensor | np.ndarray
-    mask: torch.Tensor | np.ndarray
+    target: torch.Tensor | np.ndarray
     timesteps: torch.Tensor | np.ndarray
     latlon: torch.Tensor | np.ndarray
+
+    def to_device(self, device):
+        self.images = self.images.to(device)
+        self.target = self.target.to(device)
+        self.timesteps = self.timesteps.to(device)
+        self.latlon = self.latlon.to(device)
+
+
+@dataclass
+class PrestoDatasetSample:
+    series: torch.Tensor
+    target: torch.Tensor
+    timesteps: torch.Tensor
+    latlon: torch.Tensor
+    dynamic_world: torch.Tensor
+    mask: torch.Tensor
+    month: torch.Tensor | int
+
+    def to_device(self, device):
+        self.series = self.series.to(device)
+        self.target = self.target.to(device)
+        self.timesteps = self.timesteps.to(device)
+        self.latlon = self.latlon.to(device)
+        self.dynamic_world = self.dynamic_world.to(device)
+        self.mask = self.mask.to(device)
+        self.month = (
+            self.month.to(device)
+            if isinstance(self.month, torch.Tensor)
+            else self.month
+        )
 
 
 class AugmentedDataset(data.Dataset):
@@ -106,7 +136,7 @@ class SatelliteTimeSeriesDataset(data.Dataset):
 
         return TimeSeriesDatasetSample(
             images=images,
-            mask=labels,
+            target=labels,
             timesteps=ymd,
             latlon=latlon,
         )
@@ -128,7 +158,7 @@ class SatelliteTimeSeriesDataset(data.Dataset):
 
 def pad_collate_fn(batch: List[TimeSeriesDatasetSample], pad_index=0):
     latlon = torch.stack([el.latlon for el in batch])
-    mask = torch.stack([el.mask for el in batch])
+    mask = torch.stack([el.target for el in batch])
     timesteps = [el.timesteps for el in batch]
 
     padded_images = utils.rnn.pad_sequence(
@@ -143,7 +173,7 @@ def pad_collate_fn(batch: List[TimeSeriesDatasetSample], pad_index=0):
     return (
         TimeSeriesDatasetSample(
             images=padded_images,
-            mask=mask,
+            target=mask,
             timesteps=padded_timesteps,
             latlon=latlon,
         ),

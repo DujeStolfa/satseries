@@ -3,3 +3,4 @@ ipykernel
 notebook
 rasterio
 scikit-learn
+einops
