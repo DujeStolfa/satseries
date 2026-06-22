@@ -99,12 +99,13 @@ class BahdanauAttention(nn.Module):
 
 
 class PrestoClassifier(nn.Module):
-    def __init__(self, hidden_size, out_size):
+    def __init__(self, hidden_size, out_size, dropout):
         super().__init__()
         self.encoder = presto.Encoder(embedding_size=hidden_size, mlp_ratio=4)
         for param in self.encoder.parameters():
             param.requires_grad = False
 
+        self.dropout = nn.Dropout(p=dropout)
         self.logits = nn.Linear(hidden_size, out_size)
 
     def forward(self, x: PrestoDatasetSample):
@@ -116,7 +117,8 @@ class PrestoClassifier(nn.Module):
             month=x.month,
             eval_task=True,
         )
-        logits = self.logits(embeddings)
+        h = self.dropout(embeddings)
+        logits = self.logits(h)
         return logits
 
 
@@ -144,6 +146,7 @@ def build_model(cfg: dict) -> nn.Module:
         return PrestoClassifier(
             cfg["hidden_size"],
             cfg["out_size"],
+            cfg["dropout"],
         )
 
     raise ValueError(f"Unknown model: {name}")
