@@ -67,8 +67,9 @@ if __name__ == "__main__":
     cfg_model = {
         "name": "presto",
         "hidden_size": 128,
-        "out_size": 5,
-        "weights_path": "data\\presto_classifier_base.pt",
+        "out_size": 2,
+        "dropout": 0,
+        "weights_path": "data\\presto_encoder.pt",
     }
 
     DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
@@ -83,21 +84,21 @@ if __name__ == "__main__":
 
     # class 4 is empty
     class_counts = torch.Tensor(
-        data_stats["class_counts"][1:-1]
+        data_stats["class_counts"][1:-2]
     )  # TODO: spojit razrede
     class_counts[0] = class_counts[1]  # poduzorkuj 0 na 1
 
     class_freq = 1 / class_counts
     class_weights = class_freq / class_freq.norm()
-    class_weights = torch.concat((class_weights, torch.Tensor([0])))
-    # class_weights = None
+    # class_weights = torch.concat((class_weights, torch.Tensor([0])))
+    class_weights = None
 
     cfg_loss = {
-        "name": "SymmetricCrossEntropyLoss",
-        "weight": class_weights.to(device),
-        "alpha": 0.1,
-        "beta": 1,
-        "num_classes": 5,
+        "name": "CrossEntropyLoss",
+        # "weight": class_weights.to(device),
+        # "alpha": 0.1,
+        # "beta": 1,
+        # "num_classes": 3,
         # "gamma": 2,
     }
 
@@ -113,6 +114,16 @@ if __name__ == "__main__":
         seed=cfg_train.seed,
     )
     # batch_sampler = None
+
+    label_mapper = torch.Tensor(
+        [
+            [1, 0],
+            [0, 1],
+            [0, 1],
+            [0.25, 0.75],
+            [0.75, 0.25],
+        ]
+    )
 
     train_transforms = t.Compose(
         [
@@ -147,6 +158,7 @@ if __name__ == "__main__":
             t.BatchFilterOut(labels=-1),
             t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
             t.ToPrestoFormat(),
+            t.MapLabels(mapper=label_mapper),
         ]
     )
     batch_transforms_test = t.Compose(
@@ -154,6 +166,7 @@ if __name__ == "__main__":
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
             t.ToPrestoFormat(),
+            t.MapLabels(mapper=label_mapper),
         ]
     )
 

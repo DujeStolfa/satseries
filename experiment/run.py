@@ -139,7 +139,7 @@ def run_experiment(
 
         model = build_model(cfg.model).to(device)
         if "weights_path" in cfg.model:
-            model.load_state_dict(
+            model.encoder.load_state_dict(
                 torch.load(
                     cfg.model["weights_path"],
                     map_location=device,

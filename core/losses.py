@@ -53,13 +53,17 @@ class SymmetricCrossEntropyLoss(torch.nn.Module):
         # RCE
         pred = F.softmax(pred, dim=1)
         pred = torch.clamp(pred, min=1e-7, max=1.0)
-        label_one_hot = (
-            torch.nn.functional.one_hot(labels, self._num_classes)
-            .float()
-            .to(pred.device)
-        )
-        label_one_hot = torch.clamp(label_one_hot, min=1e-4, max=1.0)
-        rce = -1 * torch.sum(pred * torch.log(label_one_hot), dim=1)
+        if len(labels.shape) == 1:
+            label_dist = (
+                torch.nn.functional.one_hot(labels, self._num_classes)
+                .float()
+                .to(pred.device)
+            )
+        else:
+            label_dist = labels.float().to(pred.device)
+
+        label_dist = torch.clamp(label_dist, min=1e-4, max=1.0)
+        rce = -1 * torch.sum(pred * torch.log(label_dist), dim=1)
 
         if self._reduction == "mean":
             rce = rce.mean()
