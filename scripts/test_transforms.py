@@ -41,7 +41,7 @@ for _ in range(3):
 
     fig, (ax1, ax2) = plt.subplots(1, 2)
     ax1.imshow(true_color(curr_item.images[0]))
-    ax2.imshow(curr_item.mask)
+    ax2.imshow(curr_item.target)
 
     fig.suptitle(f"idx = {idx}, shape = {curr_item.images.shape}")
     plt.show()
