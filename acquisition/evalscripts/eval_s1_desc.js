@@ -1,10 +1,10 @@
 //VERSION=3
 function setup() {
     return {
-        input: ["VV", "VH"],
+        input: ["VV", "VH", "dataMask"],
         output: {
             id: "default",
-            bands: 2,
+            bands: 3,
             sampleType: "FLOAT32"
         }
     };
@@ -12,7 +12,8 @@ function setup() {
 
 function evaluatePixel(sample) {
     return [
-        sample.VV,
-        sample.VH,
+        10 * Math.log(sample.VV) / Math.LN10,
+        10 * Math.log(sample.VH) / Math.LN10,
+        sample.dataMask
     ];
 }
