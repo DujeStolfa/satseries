@@ -8,10 +8,10 @@ import torch
 import core.transforms as t
 from core.datasets import (
     BalancedBatchSampler,
-    SatelliteTimeSeriesDataset,
+    SatelliteTimeSeriesDataset,  # TODO: ne postoji vise
     DatasetSplit,
     AugmentedDataset,
-    pad_collate_fn,
+    pad_collate_fn,  # TODO: ni ovo
 )
 from experiment.configs import ExperimentConfig, TrainingConfig
 from experiment.run import run_experiment
