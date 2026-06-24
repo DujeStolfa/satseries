@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data as data
@@ -28,7 +29,7 @@ def train(
         model.zero_grad()
 
         logits = model(item)
-        loss = criterion(logits, item.target.to(torch.long))
+        loss = criterion(logits, item.target)
         loss.backward()
 
         nn.utils.clip_grad_norm_(model.parameters(), clip)
@@ -39,8 +40,10 @@ def train(
         gt.append(item.target)
         preds.append(torch.argmax(logits, dim=1))
 
-    gt = torch.cat(gt).cpu().numpy()
     preds = torch.cat(preds).cpu().numpy()
+    gt = torch.cat(gt).cpu().numpy()
+    if len(gt.shape) == 2:
+        gt = np.argmax(gt, axis=1)
 
     acc = accuracy_score(gt, preds)
     f1 = f1_score(gt, preds, average=None)
@@ -66,13 +69,15 @@ def evaluate(
             item.to_device(device)
 
             logits = model(item)
-            eval_loss += criterion(logits, item.target.to(torch.long))
+            eval_loss += criterion(logits, item.target)
 
             gt.append(item.target)
             preds.append(torch.argmax(logits, dim=1))
 
-    gt = torch.cat(gt).cpu().numpy()
     preds = torch.cat(preds).cpu().numpy()
+    gt = torch.cat(gt).cpu().numpy()
+    if len(gt.shape) == 2:
+        gt = np.argmax(gt, axis=1)
 
     acc = accuracy_score(gt, preds)
     f1 = f1_score(gt, preds, average=None)
