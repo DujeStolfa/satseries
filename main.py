@@ -8,10 +8,12 @@ import torch
 import core.transforms as t
 from core.datasets import (
     BalancedBatchSampler,
-    SatelliteTimeSeriesDataset,  # TODO: ne postoji vise
+    MultimodalTimeSeriesDataset,
     DatasetSplit,
     AugmentedDataset,
-    pad_collate_fn,  # TODO: ni ovo
+    multimodal_pad_collate_fn,
+    DatasetInstance,
+    Modality,
 )
 from experiment.configs import ExperimentConfig, TrainingConfig
 from experiment.run import run_experiment
@@ -73,14 +75,16 @@ if __name__ == "__main__":
     }
 
     DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
-    collate_fn = pad_collate_fn
-    ds_instance = SatelliteTimeSeriesDataset.DatasetInstance.REGIONAL
-    core_train_ds = SatelliteTimeSeriesDataset(
+    collate_fn = multimodal_pad_collate_fn
+    ds_instance = DatasetInstance.REGIONAL
+    curr_modalities = [Modality.SENTINEL_2_L2A, Modality.SENTINEL_1_ASC]
+    core_train_ds = MultimodalTimeSeriesDataset(
         DATASET_ROOT,
         ds_instance,
         DatasetSplit.TRAIN,
+        curr_modalities,
     )
-    data_stats = core_train_ds.get_train_stats()
+    data_stats = core_train_ds.get_train_stats(Modality.SENTINEL_2_L2A)
 
     # class 4 is empty
     class_counts = torch.Tensor(
@@ -128,27 +132,55 @@ if __name__ == "__main__":
     train_transforms = t.Compose(
         [
             # t.BiasedRandomCrop(width=100, height=100, seed=cfg_train.seed),
-            t.MonthlyRandomSample(
-                month_start=4,
-                month_end=10,
-                seed=cfg_train.seed,
+            t.ApplyToModality(
+                t.MonthlyRandomSample(
+                    month_start=4,
+                    month_end=10,
+                    seed=cfg_train.seed,
+                ),
+                curr_modalities,
             ),
             t.ToTensor(),
-            t.Scale(1e-4, dim=1),
-            t.AddSpectralFeatures(dim=1, r_idx=3, nir_idx=7),
+            t.ApplyToModality(
+                t.Compose(
+                    [
+                        t.Scale(1e-4, dim=1),
+                        t.AddSpectralFeatures(dim=1, r_idx=3, nir_idx=7),
+                    ]
+                ),
+                Modality.SENTINEL_2_L2A,
+            ),
+            t.ApplyToModality(
+                t.Compose([t.Translate(25, dim=1), t.Scale(1 / 25, dim=1)]),
+                Modality.SENTINEL_1_ASC,
+            ),
             # t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
         ]
     )
     test_transforms = t.Compose(
         [
-            t.MonthlyRandomSample(
-                month_start=4,
-                month_end=10,
-                seed=cfg_train.seed,
+            t.ApplyToModality(
+                t.MonthlyRandomSample(
+                    month_start=4,
+                    month_end=10,
+                    seed=cfg_train.seed,
+                ),
+                curr_modalities,
             ),
             t.ToTensor(),
-            t.Scale(1e-4, dim=1),
-            t.AddSpectralFeatures(dim=1, r_idx=3, nir_idx=7),
+            t.ApplyToModality(
+                t.Compose(
+                    [
+                        t.Scale(1e-4, dim=1),
+                        t.AddSpectralFeatures(dim=1, r_idx=3, nir_idx=7),
+                    ]
+                ),
+                Modality.SENTINEL_2_L2A,
+            ),
+            t.ApplyToModality(
+                t.Compose([t.Translate(25, dim=1), t.Scale(1 / 25, dim=1)]),
+                Modality.SENTINEL_1_ASC,
+            ),
             # t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
         ]
     )
@@ -157,7 +189,7 @@ if __name__ == "__main__":
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
             t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
-            t.ToPrestoFormat(),
+            t.ToPrestoFormat(month_start=4),
             t.MapLabels(mapper=label_mapper),
         ]
     )
@@ -165,25 +197,27 @@ if __name__ == "__main__":
         [
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
-            t.ToPrestoFormat(),
+            t.ToPrestoFormat(month_start=4),
             t.MapLabels(mapper=label_mapper),
         ]
     )
 
     train_ds = AugmentedDataset(core_train_ds, train_transforms)
     val_ds = AugmentedDataset(
-        SatelliteTimeSeriesDataset(
+        MultimodalTimeSeriesDataset(
             DATASET_ROOT,
             ds_instance,
             DatasetSplit.VALIDATION,
+            curr_modalities,
         ),
         test_transforms,
     )
     test_ds = AugmentedDataset(
-        SatelliteTimeSeriesDataset(
+        MultimodalTimeSeriesDataset(
             DATASET_ROOT,
             ds_instance,
             DatasetSplit.TEST,
+            curr_modalities,
         ),
         test_transforms,
     )

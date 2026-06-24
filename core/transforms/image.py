@@ -59,6 +59,38 @@ class Scale(Transform):
         return x
 
 
+class Translate(Transform):
+    def __init__(self, shift, dim: int, indices: List[int] = None):
+        self._shift = shift
+        self._dim = dim
+        self._indices = indices
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["shift"] = self._shift
+        cfg["dim"] = self._dim
+        cfg["indices"] = self._indices
+        return cfg
+
+    def __call__(self, x):
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            num_dims = len(x.shape)
+        else:
+            num_dims = len(x.images.shape)
+
+        curr_slice = [slice(None)] * num_dims
+        if self._indices is not None and len(self._indices) != 0:
+            curr_slice[self._dim] = self._indices
+
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            x[*curr_slice] = x[*curr_slice] + self._shift
+        else:
+            x.images[*curr_slice] = x.images[*curr_slice] + self._shift
+
+        return x
+
+
 class AddSpectralFeatures(Transform):
     def __init__(self, dim, r_idx, nir_idx):
         super().__init__()

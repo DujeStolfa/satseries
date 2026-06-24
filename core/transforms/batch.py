@@ -3,6 +3,7 @@ from typing import List
 import numpy as np
 import torch
 
+from core.datasets import MultimodalDatasetSample
 from core.transforms.base import Transform
 from core.transforms.utils import _to_tensor
 
@@ -17,7 +18,7 @@ class BatchFilterOut(Transform):
         cfg["labels"] = self._labels
         return cfg
 
-    def __call__(self, x):
+    def __call__(self, x: MultimodalDatasetSample) -> MultimodalDatasetSample:
         if isinstance(x.target, np.ndarray):
             mask = ~np.isin(x.target, self._labels.numpy())
         elif isinstance(x.target, torch.Tensor):
@@ -25,8 +26,10 @@ class BatchFilterOut(Transform):
         else:
             mask = ~x.target.isin(self._labels)
 
-        x.images = x.images[mask]
-        x.timesteps = x.timesteps[mask]
+        for ts in x.modalities.values():
+            ts.images = ts.images[mask]
+            ts.timesteps = ts.timesteps[mask]
+
         x.latlon = x.latlon[mask]
         x.target = x.target[mask]
         return x
@@ -48,7 +51,7 @@ class BatchUndersamplingBalancer(Transform):
         cfg["undersample_cls"] = self._undersample.tolist()
         return cfg
 
-    def __call__(self, x):
+    def __call__(self, x: MultimodalDatasetSample) -> MultimodalDatasetSample:
         ref_mask = torch.isin(x.target, self._reference)
         ref_count = ref_mask.sum().item()
 
@@ -68,8 +71,10 @@ class BatchUndersamplingBalancer(Transform):
                 keep[idx] = False
                 keep[idx[top]] = True
 
-        x.images = x.images[keep]
-        x.timesteps = x.timesteps[keep]
+        for ts in x.modalities.values():
+            ts.images = ts.images[keep]
+            ts.timesteps = ts.timesteps[keep]
+
         x.latlon = x.latlon[keep]
         x.target = x.target[keep]
         return x
@@ -85,38 +90,35 @@ class BatchSpatialFlatten(Transform):
         cfg["batch_first"] = self._batch_first
         return cfg
 
-    def __call__(self, batch):
-        new_images = batch.images  # [B, T, C, H, W]
-        new_target = batch.target  # [B, H, W]
-        new_timesteps = batch.timesteps  # [B, T, 4 (YMDH)]
-        new_latlon = batch.latlon  # [B, 2]
+    def __call__(self, batch: MultimodalDatasetSample) -> MultimodalDatasetSample:
+        # images [B, T, C, H, W]
+        # timesteps [B, T, 4 (YMDH)]
+        # target [B, H, W]
+        # latlon [B, 2]
 
-        if not self._batch_first:
-            new_images = new_images.swapaxes(0, 1)
-            new_timesteps = new_timesteps.swapaxes(0, 1)
+        for ts in batch.modalities.values():
+            if not self._batch_first:
+                ts.images = ts.images.swapaxes(0, 1)
+                ts.timesteps = ts.timesteps.swapaxes(0, 1)
 
-        shape = new_images.shape
-        b, t, c, h, w = shape
+            shape = ts.images.shape
+            b, t, c, h, w = shape
 
-        new_images = new_images.permute(0, 3, 4, 1, 2).reshape(b * h * w, t, c)
-        new_target = new_target.reshape(b * h * w)
-        new_timesteps = (
-            new_timesteps[:, None, None, :, :]
-            .expand(-1, h, w, -1, -1)
-            .reshape(b * h * w, t, batch.timesteps.shape[-1])
-        )
-        new_latlon = (
-            new_latlon[:, None, None, :]
+            ts.images = ts.images.permute(0, 3, 4, 1, 2).reshape(b * h * w, t, c)
+            ts.timesteps = (
+                ts.timesteps[:, None, None, :, :]
+                .expand(-1, h, w, -1, -1)
+                .reshape(b * h * w, t, ts.timesteps.shape[-1])
+            )
+
+            if not self._batch_first:
+                ts.images = ts.images.swapaxes(0, 1)
+                ts.timesteps = ts.timesteps.swapaxes(0, 1)
+
+        batch.target = batch.target.reshape(b * h * w)
+        batch.latlon = (
+            batch.latlon[:, None, None, :]
             .expand(-1, h, w, -1)
             .reshape(b * h * w, batch.latlon.shape[-1])
         )
-
-        if not self._batch_first:
-            new_images = new_images.swapaxes(0, 1)
-            new_timesteps = new_timesteps.swapaxes(0, 1)
-
-        batch.images = new_images
-        batch.target = new_target
-        batch.timesteps = new_timesteps
-        batch.latlon = new_latlon
         return batch

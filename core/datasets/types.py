@@ -16,6 +16,12 @@ class UnimodalTimeSeries:
     def to_device(self, device):
         self.images = self.images.to(device)
         self.timesteps = self.timesteps.to(device)
+        return self
+
+    def to_tensor(self):
+        self.images = torch.from_numpy(self.images)
+        self.timesteps = torch.from_numpy(self.timesteps)
+        return self
 
 
 @dataclass
@@ -25,11 +31,20 @@ class MultimodalDatasetSample:
     latlon: torch.Tensor | np.ndarray
 
     def to_device(self, device):
-        for _, ts in self.modalities.items():
+        for ts in self.modalities.values():
             ts.to_device(device)
 
         self.target = self.target.to(device)
         self.latlon = self.latlon.to(device)
+        return self
+
+    def to_tensor(self):
+        for ts in self.modalities.values():
+            ts.to_tensor()
+
+        self.target = torch.from_numpy(self.target)
+        self.latlon = torch.from_numpy(self.latlon)
+        return self
 
 
 @dataclass
@@ -54,6 +69,10 @@ class PrestoDatasetSample:
             if isinstance(self.month, torch.Tensor)
             else self.month
         )
+        return self
+
+    def to_tensor(self):
+        return self
 
 
 def multimodal_pad_collate_fn(

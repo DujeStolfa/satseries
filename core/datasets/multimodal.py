@@ -22,7 +22,7 @@ class MultimodalTimeSeriesDataset(data.Dataset):
         self._root_dir = Path(root_dir)
         self._instance = instance
         self._split = split
-        self._modalities = modalities
+        self._modalities = modalities if isinstance(modalities, list) else [modalities]
 
         with open(self._root_dir / "metadata.json") as f:
             self._metadata = json.load(f)
@@ -62,7 +62,13 @@ class MultimodalTimeSeriesDataset(data.Dataset):
 
         data = dict()
         for modality in self._modalities:
-            images = np.load(curr_path / f"{modality.value}.npy")
+            images = np.load(curr_path / f"{modality.value}.npy").astype(np.float32)
+            if (
+                modality is Modality.SENTINEL_1_ASC
+                or modality is Modality.SENTINEL_1_DES
+            ):
+                images = np.clip(images, -50, 50)
+
             ymdh = np.array(
                 [
                     _timestamp_to_ymdh(d)
@@ -74,10 +80,10 @@ class MultimodalTimeSeriesDataset(data.Dataset):
             data[modality] = UnimodalTimeSeries(images=images, timesteps=ymdh)
 
         with rasterio.open(curr_path / "labels_10m.tif") as ds:
-            labels = ds.read(1).to(np.long)
+            labels = ds.read(1).astype(np.long)
 
         latlon = np.array(
-            [curr_series_metadata["lat"], curr_series_metadata["lon"]], dtype=np.float32
+            [curr_series_metadata["lat"], curr_series_metadata["lon"]], dtype=np.long
         )
 
         return MultimodalDatasetSample(
@@ -85,3 +91,20 @@ class MultimodalTimeSeriesDataset(data.Dataset):
             target=labels,
             latlon=latlon,
         )
+
+    def get_train_stats(self, modality):
+        if modality is Modality.SENTINEL_2_L2A:
+            return self._metadata["stats"][self._instance.value]
+
+        raise NotImplementedError()
+
+    def get_class_ratios(self) -> np.ndarray:
+        sid = self._series_ids[0]
+        all_items = self._metadata["series"]
+        sample = all_items[str(sid)]["class_ratios"]
+        out_arr = np.empty((len(self._series_ids), len(sample)))
+
+        for i, sid in enumerate(self._series_ids):
+            out_arr[i] = all_items[str(sid)]["class_ratios"]
+
+        return out_arr

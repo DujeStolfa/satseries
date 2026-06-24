@@ -1,8 +1,33 @@
+from typing import List
+
 import numpy as np
 import torch
 
-from core.datasets import PrestoDatasetSample
+from core.datasets import PrestoDatasetSample, MultimodalDatasetSample
+from core.datasets.base import Modality
 from core.transforms.base import Transform
+
+
+class ApplyToModality(Transform):
+    def __init__(self, transform: Transform, modalities: Modality | List[Modality]):
+        self._transform = transform
+        self._modalities = modalities if isinstance(modalities, list) else [modalities]
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["transform"] = self._transform.config_dict
+        cfg["modalities"] = [m.value for m in self._modalities]
+        return cfg
+
+    def __call__(self, data: MultimodalDatasetSample):
+        for m in self._modalities:
+            if m not in data.modalities:
+                raise ValueError(f"Dataset sample doesn't contain modality {m.value}")
+
+            data.modalities[m] = self._transform(data.modalities[m])
+
+        return data
 
 
 class ToTensor(Transform):
@@ -10,10 +35,7 @@ class ToTensor(Transform):
         if isinstance(x, np.ndarray):
             return torch.from_numpy(x).float()
 
-        x.images = torch.from_numpy(x.images).float()
-        x.target = torch.from_numpy(x.target)
-        x.timesteps = torch.from_numpy(x.timesteps).to(torch.long)
-        x.latlon = torch.from_numpy(x.latlon).float()
+        x.to_tensor()
         return x
 
 
@@ -34,7 +56,7 @@ class BiasedRandomCrop(Transform):
         cfg["seed"] = self._seed
         return cfg
 
-    def __call__(self, x):
+    def __call__(self, x: MultimodalDatasetSample) -> MultimodalDatasetSample:
         target_data = x.target.numpy() if hasattr(x.target, "numpy") else x.target
         valid_pixels = np.argwhere(target_data != self._background)
 
@@ -56,9 +78,11 @@ class BiasedRandomCrop(Transform):
             top = self._rng.integers(low_y, high_y + 1) if low_y < high_y else low_y
             left = self._rng.integers(low_x, high_x + 1) if low_x < high_x else low_x
 
-        x.images = x.images[
-            ..., top : top + self._crop_height, left : left + self._crop_width
-        ]
+        for ts in x.modalities.values():
+            ts.images = ts.images[
+                ..., top : top + self._crop_height, left : left + self._crop_width
+            ]
+
         x.target = x.target[
             ..., top : top + self._crop_height, left : left + self._crop_width
         ]
@@ -67,25 +91,47 @@ class BiasedRandomCrop(Transform):
 
 
 class ToPrestoFormat(Transform):
-    def __init__(self):
-        self._out_channels = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16]
-        self._in_channels = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12]
+    def __init__(self, month_start):
+        self._month_start = month_start
+        self._s1_out_channels = [0, 1]
+        self._s2_out_channels = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16]
+        self._s2_in_channels = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12]
 
-    def __call__(self, x) -> PrestoDatasetSample:
-        b, t, _ = x.images.shape
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["month_start"] = self._month_start
+        return cfg
 
-        series = torch.zeros((b, t, 17), dtype=x.images.dtype)
-        series[..., self._out_channels] = x.images[..., self._in_channels]
+    def __call__(self, x: MultimodalDatasetSample) -> PrestoDatasetSample:
+        if len(x.modalities) == 0:
+            raise ValueError("Received empty MultimodalDatasetSample")
 
+        ts = list(x.modalities.values())[0]
+        ymdh = ts.timesteps  # max?
+        b, t, _ = ts.images.shape
+        series = torch.zeros((b, t, 17), dtype=ts.images.dtype)
         mask = torch.ones((b, t, 17))
-        mask[..., self._out_channels] = 0
+
+        # svi primjeri u grupi (pa i datasetu) pocinju u isti mjesec
+        month = torch.ones((b), dtype=torch.long) * self._month_start
+
+        for m, ts in x.modalities.items():
+            if m is Modality.SENTINEL_2_L2A:
+                series[..., self._s2_out_channels] = ts.images[
+                    ..., self._s2_in_channels
+                ]
+                mask[..., self._s2_out_channels] = 0
+            else:
+                series[..., self._s1_out_channels] = ts.images
+                mask[..., self._s1_out_channels] = 0
 
         return PrestoDatasetSample(
             series=series,
             target=x.target,
-            timesteps=x.timesteps,
+            timesteps=ymdh,
             latlon=x.latlon,
             dynamic_world=torch.ones((b, t), dtype=torch.long) * 9,
             mask=mask,
-            month=x.timesteps[..., 0, 1].to(torch.long),
+            month=month,
         )
