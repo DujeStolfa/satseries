@@ -37,8 +37,8 @@ def train(
         scheduler.step()
 
         train_loss += loss.item()
-        gt.append(item.target)
-        preds.append(torch.argmax(logits, dim=1))
+        gt.append(item.target.detach().cpu())
+        preds.append(torch.argmax(logits.detach(), dim=1).cpu())
 
     preds = torch.cat(preds).cpu().numpy()
     gt = torch.cat(gt).cpu().numpy()
@@ -69,10 +69,10 @@ def evaluate(
             item.to_device(device)
 
             logits = model(item)
-            eval_loss += criterion(logits, item.target)
+            eval_loss += criterion(logits, item.target).item()
 
-            gt.append(item.target)
-            preds.append(torch.argmax(logits, dim=1))
+            gt.append(item.target.detach().cpu())
+            preds.append(torch.argmax(logits.detach().cpu(), dim=1))
 
     preds = torch.cat(preds).cpu().numpy()
     gt = torch.cat(gt).cpu().numpy()
