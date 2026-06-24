@@ -39,14 +39,14 @@ if __name__ == "__main__":
     cfg_train = TrainingConfig(
         clip=2.0,
         epochs=10,
-        batch_size=8,
-        batch_size_test=8,
+        batch_size=4,
+        batch_size_test=4,
         num_workers=4,
     )
 
     cfg_optim = {
         "name": "Adam",
-        "lr": 1e-3,
+        "lr": 1e-4,
         "weight_decay": 1e-2,
     }
 
@@ -72,6 +72,7 @@ if __name__ == "__main__":
         "out_size": 2,
         "dropout": 0,
         "weights_path": "data\\presto_encoder.pt",
+        "frozen": False,
     }
 
     DATASET_ROOT = "E:\\data\\diplomski\\amorfa"

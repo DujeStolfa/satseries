@@ -29,6 +29,7 @@ def build_model(cfg: dict) -> nn.Module:
             cfg["hidden_size"],
             cfg["out_size"],
             cfg["dropout"],
+            cfg["frozen"],
         )
 
     raise ValueError(f"Unknown model: {name}")
