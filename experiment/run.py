@@ -183,5 +183,5 @@ def run_experiment(
         )
         log_eval("test", test_loss, acc, f1, step=epoch)
 
-        mlflow.pytorch.log_model(model, name="model")
+        mlflow.pytorch.log_model(model, name="model", serialization_format="pickle")
         return model
