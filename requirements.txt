@@ -1,6 +1,9 @@
-earthengine-api
 ipykernel
 notebook
 rasterio
 scikit-learn
 einops
+mlflow
+lovely_tensors
+lovely_numpy
+tqdm
