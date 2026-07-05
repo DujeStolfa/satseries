@@ -117,14 +117,20 @@ class ToPrestoFormat(Transform):
         month = torch.ones((b), dtype=torch.long) * self._month_start
 
         for m, ts in x.modalities.items():
+            # ako je godina postavljena na nulu, nemamo podatke za taj mjesec
+            valid_timesteps_mask = (ts.timesteps[..., 0] != 0).unsqueeze(-1)
             if m is Modality.SENTINEL_2_L2A:
                 series[..., self._s2_out_channels] = ts.images[
                     ..., self._s2_in_channels
                 ]
-                mask[..., self._s2_out_channels] = 0
+                mask[..., self._s2_out_channels] = torch.where(
+                    valid_timesteps_mask, 0.0, 1.0
+                )
             else:
                 series[..., self._s1_out_channels] = ts.images
-                mask[..., self._s1_out_channels] = 0
+                mask[..., self._s1_out_channels] = torch.where(
+                    valid_timesteps_mask, 0.0, 1.0
+                )
 
         return PrestoDatasetSample(
             series=series,
