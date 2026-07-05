@@ -38,9 +38,9 @@ if __name__ == "__main__":
 
     cfg_train = TrainingConfig(
         clip=2.0,
-        epochs=10,
-        batch_size=4,
-        batch_size_test=4,
+        epochs=1,
+        batch_size=8,
+        batch_size_test=8,
         num_workers=4,
     )
 
@@ -72,10 +72,11 @@ if __name__ == "__main__":
         "out_size": 2,
         "dropout": 0,
         "weights_path": "data\\presto_encoder.pt",
-        "frozen": False,
+        "frozen": True,
     }
 
-    DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
+    # DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
+    DATASET_ROOT = "\\\\teratron\\Oikon_RSLab_tmp\\_Radno\\Duje_tmp\\data\\amorfa"
     collate_fn = multimodal_pad_collate_fn
     ds_instance = DatasetInstance.REGIONAL
     curr_modalities = [Modality.SENTINEL_2_L2A, Modality.SENTINEL_1_ASC]
@@ -134,10 +135,10 @@ if __name__ == "__main__":
         [
             # t.BiasedRandomCrop(width=100, height=100, seed=cfg_train.seed),
             t.ApplyToModality(
-                t.MonthlyRandomSample(
+                t.MonthlyComposite(
                     month_start=4,
                     month_end=10,
-                    seed=cfg_train.seed,
+                    reduction="median",  # seed=cfg_train.seed,
                 ),
                 curr_modalities,
             ),
@@ -161,10 +162,10 @@ if __name__ == "__main__":
     test_transforms = t.Compose(
         [
             t.ApplyToModality(
-                t.MonthlyRandomSample(
+                t.MonthlyComposite(
                     month_start=4,
                     month_end=10,
-                    seed=cfg_train.seed,
+                    reduction="median",  # seed=cfg_train.seed,
                 ),
                 curr_modalities,
             ),
