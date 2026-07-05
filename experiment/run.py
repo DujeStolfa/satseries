@@ -24,7 +24,13 @@ def set_seed(seed):
 
 
 def load_datasets(
-    cfg: ExperimentConfig, train_ds, val_ds, test_ds, collate_fn, batch_sampler
+    cfg: ExperimentConfig,
+    train_ds,
+    train_eval_ds,
+    val_ds,
+    test_ds,
+    collate_fn,
+    batch_sampler,
 ):
     if batch_sampler is None:
         train_loader = DataLoader(
@@ -46,6 +52,15 @@ def load_datasets(
             persistent_workers=cfg.training.num_workers > 0,
         )
 
+    train_eval_loader = DataLoader(
+        train_eval_ds,
+        batch_size=cfg.training.batch_size_test,
+        shuffle=False,
+        collate_fn=collate_fn,
+        pin_memory=True,
+        num_workers=cfg.training.num_workers,
+        persistent_workers=cfg.training.num_workers > 0,
+    )
     val_loader = DataLoader(
         val_ds,
         batch_size=cfg.training.batch_size_test,
@@ -64,10 +79,10 @@ def load_datasets(
         num_workers=cfg.training.num_workers,
         persistent_workers=cfg.training.num_workers > 0,
     )
-    return train_loader, val_loader, test_loader
+    return train_loader, train_eval_loader, val_loader, test_loader
 
 
-def log_eval(split: str, loss, acc, f1, **kwargs):
+def log_eval(split: str, loss, acc, f1, precision, recall, **kwargs):
     mlflow.log_metric(f"{split}_loss", loss, **kwargs)
     mlflow.log_metric(f"{split}_acc", acc, **kwargs)
     mlflow.log_metric(f"{split}_f1_macro", f1.mean(), **kwargs)
@@ -75,6 +90,8 @@ def log_eval(split: str, loss, acc, f1, **kwargs):
 
     for i, v in enumerate(f1):
         mlflow.log_metric(f"{split}_f1_class_{i}", v, **kwargs)
+        mlflow.log_metric(f"{split}_precision_class_{i}", precision[i], **kwargs)
+        mlflow.log_metric(f"{split}_recall_class_{i}", recall[i], **kwargs)
 
 
 def log_dict_with_name(cfg: ExperimentConfig, attr_name):
@@ -94,6 +111,7 @@ def run_experiment(
     run_name,
     cfg: ExperimentConfig,
     train_ds,
+    train_eval_ds,
     val_ds,
     test_ds,
     collate_fn,
@@ -103,7 +121,9 @@ def run_experiment(
     batch_sampler,
 ):
     set_seed(cfg.training.seed)
-    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    mlflow.set_tracking_uri(
+        "http://0.0.0.0:5000"
+    )  # mozda prominit da se slucajno ne skrsi?
     mlflow.set_experiment(cfg.name)
 
     with mlflow.start_run(run_name=run_name):
@@ -133,8 +153,14 @@ def run_experiment(
                     }
                 )
 
-        train_loader, val_loader, test_loader = load_datasets(
-            cfg, train_ds, val_ds, test_ds, collate_fn, batch_sampler
+        train_loader, train_eval_loader, val_loader, test_loader = load_datasets(
+            cfg,
+            train_ds,
+            train_eval_ds,
+            val_ds,
+            test_ds,
+            collate_fn,
+            batch_sampler,
         )
 
         model = build_model(cfg.model).to(device)
@@ -153,7 +179,7 @@ def run_experiment(
         for epoch in range(cfg.training.epochs):
             print(f"\nEpoch {epoch + 1}")
 
-            train_loss, acc, f1 = train(
+            train_loss, acc, f1, precision, recall = train(
                 model,
                 train_loader,
                 criterion,
@@ -163,25 +189,36 @@ def run_experiment(
                 cfg.training.clip,
                 batch_transforms_train,
             )
-            log_eval("train", train_loss, acc, f1, step=epoch)
+            log_eval("train", train_loss, acc, f1, precision, recall, step=epoch)
 
-            val_loss, acc, f1 = evaluate(
+            train_eval_loss, acc, f1, precision, recall = evaluate(
+                model,
+                train_eval_loader,
+                criterion,
+                device,
+                batch_transforms_test,
+            )
+            log_eval(
+                "train_eval", train_eval_loss, acc, f1, precision, recall, step=epoch
+            )
+
+            val_loss, acc, f1, precision, recall = evaluate(
                 model,
                 val_loader,
                 criterion,
                 device,
                 batch_transforms_test,
             )
-            log_eval("val", val_loss, acc, f1, step=epoch)
+            log_eval("val", val_loss, acc, f1, precision, recall, step=epoch)
 
-        test_loss, acc, f1 = evaluate(
+        test_loss, acc, f1, precision, recall = evaluate(
             model,
             test_loader,
             criterion,
             device,
             batch_transforms_test,
         )
-        log_eval("test", test_loss, acc, f1, step=epoch)
+        log_eval("test", test_loss, acc, f1, precision, recall, step=epoch)
 
         mlflow.pytorch.log_model(model, name="model", serialization_format="pickle")
         return model

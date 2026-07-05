@@ -14,6 +14,7 @@ from core.datasets import (
     multimodal_pad_collate_fn,
     DatasetInstance,
     Modality,
+    SingleMonthDataset,
 )
 from experiment.configs import ExperimentConfig, TrainingConfig
 from experiment.run import run_experiment
@@ -38,7 +39,7 @@ if __name__ == "__main__":
 
     cfg_train = TrainingConfig(
         clip=2.0,
-        epochs=1,
+        epochs=10,
         batch_size=8,
         batch_size_test=8,
         num_workers=4,
@@ -46,7 +47,7 @@ if __name__ == "__main__":
 
     cfg_optim = {
         "name": "Adam",
-        "lr": 1e-4,
+        "lr": 5e-4,
         "weight_decay": 1e-2,
     }
 
@@ -71,20 +72,23 @@ if __name__ == "__main__":
         "hidden_size": 128,
         "out_size": 2,
         "dropout": 0,
-        "weights_path": "data\\presto_encoder.pt",
-        "frozen": True,
+        "weights_path": "/mnt/teratron/data/presto_encoder.pt",
+        "frozen": False,
     }
 
-    # DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
-    DATASET_ROOT = "\\\\teratron\\Oikon_RSLab_tmp\\_Radno\\Duje_tmp\\data\\amorfa"
+    start_month = 7
+    end_month = 7
+
+    DATASET_ROOT = "/mnt/teratron/data/amorfa"
     collate_fn = multimodal_pad_collate_fn
     ds_instance = DatasetInstance.REGIONAL
     curr_modalities = [Modality.SENTINEL_2_L2A, Modality.SENTINEL_1_ASC]
-    core_train_ds = MultimodalTimeSeriesDataset(
+    core_train_ds = SingleMonthDataset(
         DATASET_ROOT,
         ds_instance,
         DatasetSplit.TRAIN,
         curr_modalities,
+        month=start_month,
     )
     data_stats = core_train_ds.get_train_stats(Modality.SENTINEL_2_L2A)
 
@@ -92,12 +96,14 @@ if __name__ == "__main__":
     class_counts = torch.Tensor(
         data_stats["class_counts"][1:-2]
     )  # TODO: spojit razrede
-    class_counts[0] = class_counts[1]  # poduzorkuj 0 na 1
+    # class_counts[0] = class_counts[1]  # poduzorkuj 0 na 1
 
+    class_counts[1] = torch.sum(class_counts[1:])
+    class_counts = class_counts[:2]
     class_freq = 1 / class_counts
     class_weights = class_freq / class_freq.norm()
     # class_weights = torch.concat((class_weights, torch.Tensor([0])))
-    class_weights = None
+    class_weights = None  # torch.tensor([0.05, 1])
 
     cfg_loss = {
         "name": "CrossEntropyLoss",
@@ -135,10 +141,10 @@ if __name__ == "__main__":
         [
             # t.BiasedRandomCrop(width=100, height=100, seed=cfg_train.seed),
             t.ApplyToModality(
-                t.MonthlyComposite(
-                    month_start=4,
-                    month_end=10,
-                    reduction="median",  # seed=cfg_train.seed,
+                t.MonthlyRandomSample(
+                    month_start=start_month,
+                    month_end=end_month,
+                    seed=cfg_train.seed,
                 ),
                 curr_modalities,
             ),
@@ -162,10 +168,10 @@ if __name__ == "__main__":
     test_transforms = t.Compose(
         [
             t.ApplyToModality(
-                t.MonthlyComposite(
-                    month_start=4,
-                    month_end=10,
-                    reduction="median",  # seed=cfg_train.seed,
+                t.MonthlyRandomSample(
+                    month_start=start_month,
+                    month_end=end_month,
+                    seed=cfg_train.seed,
                 ),
                 curr_modalities,
             ),
@@ -191,7 +197,7 @@ if __name__ == "__main__":
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
             t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
-            t.ToPrestoFormat(month_start=4),
+            t.ToPrestoFormat(month_start=start_month),
             t.MapLabels(mapper=label_mapper),
         ]
     )
@@ -199,27 +205,39 @@ if __name__ == "__main__":
         [
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
-            t.ToPrestoFormat(month_start=4),
+            t.ToPrestoFormat(month_start=start_month),
             t.MapLabels(mapper=label_mapper),
         ]
     )
 
     train_ds = AugmentedDataset(core_train_ds, train_transforms)
+    train_eval_ds = AugmentedDataset(
+        SingleMonthDataset(
+            DATASET_ROOT,
+            ds_instance,
+            DatasetSplit.TRAIN,
+            curr_modalities,
+            start_month,
+        ),
+        test_transforms,
+    )
     val_ds = AugmentedDataset(
-        MultimodalTimeSeriesDataset(
+        SingleMonthDataset(
             DATASET_ROOT,
             ds_instance,
             DatasetSplit.VALIDATION,
             curr_modalities,
+            start_month,
         ),
         test_transforms,
     )
     test_ds = AugmentedDataset(
-        MultimodalTimeSeriesDataset(
+        SingleMonthDataset(
             DATASET_ROOT,
             ds_instance,
             DatasetSplit.TEST,
             curr_modalities,
+            start_month,
         ),
         test_transforms,
     )
@@ -251,6 +269,7 @@ if __name__ == "__main__":
         run_name,
         cfg,
         train_ds,
+        train_eval_ds,
         val_ds,
         test_ds,
         collate_fn,
