@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data as data
 import torch.optim as optim
-from sklearn.metrics import accuracy_score, f1_score
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from tqdm import tqdm
 
 
@@ -46,8 +46,8 @@ def train(
         gt = np.argmax(gt, axis=1)
 
     acc = accuracy_score(gt, preds)
-    f1 = f1_score(gt, preds, average=None)
-    return train_loss / len(dataloader), acc, f1
+    precision, recall, f1, _ = precision_recall_fscore_support(gt, preds, average=None)
+    return train_loss / len(dataloader), acc, f1, precision, recall
 
 
 def evaluate(
@@ -80,5 +80,5 @@ def evaluate(
         gt = np.argmax(gt, axis=1)
 
     acc = accuracy_score(gt, preds)
-    f1 = f1_score(gt, preds, average=None)
-    return eval_loss / len(dataloader), acc, f1
+    precision, recall, f1, _ = precision_recall_fscore_support(gt, preds, average=None)
+    return eval_loss / len(dataloader), acc, f1, precision, recall

@@ -70,9 +70,9 @@ class Attention(nn.Module):
         q, k = self.q_norm(q), self.k_norm(k)
 
         if self.fast_attn:
+            # a value of True indicates that the element should take part in attention
             if attn_mask is not None:
                 attn_mask = attn_mask[:, None, None].repeat((1, self.num_heads, N, 1))
-            # a value of True indicates that the element should take part in attention
             x = F.scaled_dot_product_attention(
                 q, k, v, attn_mask=attn_mask, dropout_p=self.attn_drop.p
             )

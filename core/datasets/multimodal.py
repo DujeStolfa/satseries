@@ -83,7 +83,7 @@ class MultimodalTimeSeriesDataset(data.Dataset):
             labels = ds.read(1).astype(np.long)
 
         latlon = np.array(
-            [curr_series_metadata["lat"], curr_series_metadata["lon"]], dtype=np.long
+            [curr_series_metadata["lat"], curr_series_metadata["lon"]], dtype=np.float32
         )
 
         return MultimodalDatasetSample(
@@ -108,3 +108,52 @@ class MultimodalTimeSeriesDataset(data.Dataset):
             out_arr[i] = all_items[str(sid)]["class_ratios"]
 
         return out_arr
+
+
+class SingleMonthDataset(MultimodalTimeSeriesDataset):
+    def __init__(
+        self,
+        root_dir,
+        instance: DatasetInstance,
+        split: DatasetSplit,
+        modalities: List[Modality],
+        month: int,
+    ):
+        super().__init__(root_dir, instance, split, modalities)
+        self._month = month
+
+        # filter series_ids
+        keep_indices = list()
+
+        for i, series_id in enumerate(self._series_ids):
+            curr = self._metadata["series"][str(series_id)]
+            has_data = True
+
+            for modality in self._modalities:
+                has_data = has_data and (
+                    month
+                    in [
+                        dt.strptime(ts, "%Y-%m-%dT%H-%M-%S").month
+                        for ts in curr[f"dates_{modality.value}"]
+                    ]
+                )
+
+            if has_data:
+                keep_indices.append(i)
+
+        self._series_ids = np.array(self._series_ids)[keep_indices].tolist()
+
+        series_dir = self._root_dir / "series"
+        self._series_dirs = [series_dir / str(sid) for sid in self._series_ids]
+        self._series_dirs = [dir for dir in self._series_dirs if dir.is_dir()]
+
+    @property
+    def config_dict(self):
+        return dict(
+            name=type(self).__name__,
+            root_dir=self._root_dir,
+            instance=self._instance.value,
+            split=self._split.value,
+            modalities=[m.value for m in self._modalities],
+            month=self._month,
+        )

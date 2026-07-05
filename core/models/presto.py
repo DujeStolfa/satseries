@@ -9,6 +9,10 @@ class PrestoClassifier(nn.Module):
         super().__init__()
         self.encoder = presto_base.Encoder(embedding_size=hidden_size, mlp_ratio=4)
         self.frozen = frozen
+
+        self.encoder.pos_embed.requires_grad_(False)
+        self.encoder.month_embed.requires_grad_(False)
+
         if frozen:
             for param in self.encoder.parameters():
                 param.requires_grad = False
