@@ -38,17 +38,18 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     cfg_train = TrainingConfig(
-        clip=2.0,
-        epochs=10,
+        clip=1.0,
+        epochs=150,
         batch_size=8,
         batch_size_test=8,
-        num_workers=4,
+        num_workers=8,
+        # seed=2026070601,
     )
 
     cfg_optim = {
-        "name": "Adam",
-        "lr": 5e-4,
-        "weight_decay": 1e-2,
+        "name": "AdamW",
+        "lr": 1e-3,
+        "weight_decay": 1e-4,
     }
 
     cfg_scheduler = {
@@ -70,25 +71,26 @@ if __name__ == "__main__":
     cfg_model = {
         "name": "presto",
         "hidden_size": 128,
+        # "head": [512, 256, 128, 64],
         "out_size": 2,
-        "dropout": 0,
+        "dropout": 0.4,
         "weights_path": "/mnt/teratron/data/presto_encoder.pt",
-        "frozen": False,
+        "frozen": True,
     }
 
-    start_month = 7
+    start_month = 4
     end_month = 7
 
     DATASET_ROOT = "/mnt/teratron/data/amorfa"
     collate_fn = multimodal_pad_collate_fn
     ds_instance = DatasetInstance.REGIONAL
     curr_modalities = [Modality.SENTINEL_2_L2A, Modality.SENTINEL_1_ASC]
-    core_train_ds = SingleMonthDataset(
+    core_train_ds = MultimodalTimeSeriesDataset(
         DATASET_ROOT,
         ds_instance,
         DatasetSplit.TRAIN,
         curr_modalities,
-        month=start_month,
+        # month=start_month,
     )
     data_stats = core_train_ds.get_train_stats(Modality.SENTINEL_2_L2A)
 
@@ -103,11 +105,11 @@ if __name__ == "__main__":
     class_freq = 1 / class_counts
     class_weights = class_freq / class_freq.norm()
     # class_weights = torch.concat((class_weights, torch.Tensor([0])))
-    class_weights = None  # torch.tensor([0.05, 1])
+    # class_weights = torch.tensor([0.05, 2])
 
     cfg_loss = {
-        "name": "CrossEntropyLoss",
-        # "weight": class_weights.to(device),
+        "name": "FocalLoss",
+        "weight": class_weights.to(device),
         # "alpha": 0.1,
         # "beta": 1,
         # "num_classes": 3,
@@ -122,10 +124,10 @@ if __name__ == "__main__":
         pos_indices,
         neg_indices,
         batch_size=cfg_train.batch_size,
-        positive_ratio=0.5,
+        positive_ratio=0.375,
         seed=cfg_train.seed,
     )
-    # batch_sampler = None
+    batch_sampler = None
 
     label_mapper = torch.Tensor(
         [
@@ -196,7 +198,7 @@ if __name__ == "__main__":
         [
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
-            t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
+            # t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
             t.ToPrestoFormat(month_start=start_month),
             t.MapLabels(mapper=label_mapper),
         ]
@@ -212,32 +214,32 @@ if __name__ == "__main__":
 
     train_ds = AugmentedDataset(core_train_ds, train_transforms)
     train_eval_ds = AugmentedDataset(
-        SingleMonthDataset(
+        MultimodalTimeSeriesDataset(
             DATASET_ROOT,
             ds_instance,
             DatasetSplit.TRAIN,
             curr_modalities,
-            start_month,
+            # start_month,
         ),
         test_transforms,
     )
     val_ds = AugmentedDataset(
-        SingleMonthDataset(
+        MultimodalTimeSeriesDataset(
             DATASET_ROOT,
             ds_instance,
             DatasetSplit.VALIDATION,
             curr_modalities,
-            start_month,
+            # start_month,
         ),
         test_transforms,
     )
     test_ds = AugmentedDataset(
-        SingleMonthDataset(
+        MultimodalTimeSeriesDataset(
             DATASET_ROOT,
             ds_instance,
             DatasetSplit.TEST,
             curr_modalities,
-            start_month,
+            # start_month,
         ),
         test_transforms,
     )

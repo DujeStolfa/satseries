@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from core.models.presto import PrestoClassifier
+from core.models.presto import PrestoLinear, PrestoDeep
 from core.models.recurrent import RNNModel
 
 
@@ -25,9 +25,18 @@ def build_model(cfg: dict) -> nn.Module:
         )
 
     if name == "presto":
-        return PrestoClassifier(
+        return PrestoLinear(
             cfg["hidden_size"],
             cfg["out_size"],
+            cfg["dropout"],
+            cfg["frozen"],
+        )
+
+    if name == "presto_deep":
+        return PrestoDeep(
+            cfg["hidden_size"],
+            cfg["out_size"],
+            cfg["head"],
             cfg["dropout"],
             cfg["frozen"],
         )
