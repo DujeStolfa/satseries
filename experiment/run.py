@@ -82,7 +82,7 @@ def load_datasets(
     return train_loader, train_eval_loader, val_loader, test_loader
 
 
-def log_eval(split: str, loss, acc, f1, precision, recall, **kwargs):
+def log_eval(split: str, loss, acc, f1, precision, recall, ap, **kwargs):
     mlflow.log_metric(f"{split}_loss", loss, **kwargs)
     mlflow.log_metric(f"{split}_acc", acc, **kwargs)
     mlflow.log_metric(f"{split}_f1_macro", f1.mean(), **kwargs)
@@ -92,6 +92,7 @@ def log_eval(split: str, loss, acc, f1, precision, recall, **kwargs):
         mlflow.log_metric(f"{split}_f1_class_{i}", v, **kwargs)
         mlflow.log_metric(f"{split}_precision_class_{i}", precision[i], **kwargs)
         mlflow.log_metric(f"{split}_recall_class_{i}", recall[i], **kwargs)
+        mlflow.log_metric(f"{split}_ap_class_{i}", ap[i], **kwargs)
 
 
 def log_dict_with_name(cfg: ExperimentConfig, attr_name):
@@ -179,7 +180,7 @@ def run_experiment(
         for epoch in range(cfg.training.epochs):
             print(f"\nEpoch {epoch + 1}")
 
-            train_loss, acc, f1, precision, recall = train(
+            train_loss, acc, f1, precision, recall, ap = train(
                 model,
                 train_loader,
                 criterion,
@@ -189,9 +190,9 @@ def run_experiment(
                 cfg.training.clip,
                 batch_transforms_train,
             )
-            log_eval("train", train_loss, acc, f1, precision, recall, step=epoch)
+            log_eval("train", train_loss, acc, f1, precision, recall, ap, step=epoch)
 
-            train_eval_loss, acc, f1, precision, recall = evaluate(
+            train_eval_loss, acc, f1, precision, recall, ap = evaluate(
                 model,
                 train_eval_loader,
                 criterion,
@@ -199,26 +200,33 @@ def run_experiment(
                 batch_transforms_test,
             )
             log_eval(
-                "train_eval", train_eval_loss, acc, f1, precision, recall, step=epoch
+                "train_eval",
+                train_eval_loss,
+                acc,
+                f1,
+                precision,
+                recall,
+                ap,
+                step=epoch,
             )
 
-            val_loss, acc, f1, precision, recall = evaluate(
+            val_loss, acc, f1, precision, recall, ap = evaluate(
                 model,
                 val_loader,
                 criterion,
                 device,
                 batch_transforms_test,
             )
-            log_eval("val", val_loss, acc, f1, precision, recall, step=epoch)
+            log_eval("val", val_loss, acc, f1, precision, recall, ap, step=epoch)
 
-        test_loss, acc, f1, precision, recall = evaluate(
+        test_loss, acc, f1, precision, recall, ap = evaluate(
             model,
             test_loader,
             criterion,
             device,
             batch_transforms_test,
         )
-        log_eval("test", test_loss, acc, f1, precision, recall, step=epoch)
+        log_eval("test", test_loss, acc, f1, precision, recall, ap, step=epoch)
 
         mlflow.pytorch.log_model(model, name="model", serialization_format="pickle")
         return model
