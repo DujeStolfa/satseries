@@ -19,6 +19,8 @@ class FocalLoss(nn.Module):
         loss = focal_weight * ce_loss
 
         if self._weight is not None:
+            if len(targets.shape) == 2:
+                targets = torch.argmax(targets, dim=1)
             alpha_t = self._weight.to(inputs.device)[targets]
             loss = alpha_t * loss
 
