@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 from core.models.presto import PrestoLinear, PrestoDeep
-from core.models.recurrent import RNNModel
+from core.models.recurrent import RecurrentModel
 
 
 def build_model(cfg: dict) -> nn.Module:
@@ -13,12 +13,13 @@ def build_model(cfg: dict) -> nn.Module:
             "gru": nn.GRU,
             "lstm": nn.LSTM,
         }
-        return RNNModel(
+        return RecurrentModel(
             cell_map[cfg["rnn_cell"]],
             cfg["in_size"],
             cfg["hidden_size"],
             cfg["out_size"],
             cfg["num_layers"],
+            cfg["head"],
             cfg["dropout"],
             cfg["bidirectional"],
             cfg["attend"],

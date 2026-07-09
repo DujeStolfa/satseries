@@ -2,6 +2,7 @@ import torch.nn as nn
 
 import core.models.presto_base as presto_base
 from core.datasets import PrestoDatasetSample
+from core.models.modules import LinearGeluBN
 
 
 class PrestoLinear(nn.Module):
@@ -34,15 +35,6 @@ class PrestoLinear(nn.Module):
         return logits
 
 
-class _LinearGeluBN(nn.Sequential):
-    def __init__(self, in_size, out_size, dropout):
-        super(_LinearGeluBN, self).__init__()
-        self.append(nn.Linear(in_size, out_size))
-        self.append(nn.BatchNorm1d(out_size))
-        self.append(nn.GELU())
-        self.append(nn.Dropout(p=dropout))
-
-
 class PrestoDeep(nn.Module):
     def __init__(self, hidden_size, out_size, head_cfg, dropout, frozen):
         super().__init__()
@@ -59,7 +51,7 @@ class PrestoDeep(nn.Module):
         head_cfg = [hidden_size] + head_cfg
         self.blocks = nn.ModuleList(
             [
-                _LinearGeluBN(block_in, block_out, dropout)
+                LinearGeluBN(block_in, block_out, dropout)
                 for block_in, block_out in zip(head_cfg[:-1], head_cfg[1:])
             ]
         )

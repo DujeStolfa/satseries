@@ -3,7 +3,11 @@ from typing import List
 import numpy as np
 import torch
 
-from core.datasets import PrestoDatasetSample, MultimodalDatasetSample
+from core.datasets import (
+    PrestoDatasetSample,
+    MultimodalDatasetSample,
+    UnimodalDatasetSample,
+)
 from core.datasets.base import Modality
 from core.transforms.base import Transform
 
@@ -140,4 +144,46 @@ class ToPrestoFormat(Transform):
             dynamic_world=torch.ones((b, t), dtype=torch.long) * 9,
             mask=mask,
             month=month,
+        )
+
+
+class ConcatenateModalities(Transform):
+    def __init__(self, modalities: List[Modality], dim: int):
+        self._modalities = modalities
+        self._dim = dim
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["modalities"] = [m.value for m in self._modalities]
+        cfg["dim"] = self._dim
+        return cfg
+
+    def __call__(self, x: MultimodalDatasetSample) -> UnimodalDatasetSample:
+        images = []
+        timesteps = []
+
+        for m in self._modalities:
+            if m not in x.modalities:
+                raise ValueError(f"Modality {m} not provided for item {x}")
+
+            item = x.modalities[m]
+            images.append(item.images)
+            timesteps.append(item.timesteps)
+
+        series_lengths = [len(ts) for ts in timesteps]
+        if len(set(series_lengths)) > 1:
+            raise ValueError(
+                f"Modalities are not temporally aligned, got lengths {series_lengths}"
+            )
+
+        if isinstance(images[0], np.ndarray):
+            images = np.concatenate(images, axis=self._dim)
+        else:
+            images = torch.cat(images, dim=self._dim)
+
+        return UnimodalDatasetSample(
+            series=images,
+            target=x.target,
+            timesteps=timesteps[0],
         )

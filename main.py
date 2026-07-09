@@ -39,10 +39,10 @@ if __name__ == "__main__":
 
     cfg_train = TrainingConfig(
         clip=1.0,
-        epochs=150,
+        epochs=50,
         batch_size=8,
         batch_size_test=8,
-        num_workers=8,
+        num_workers=4,
         # seed=2026070601,
     )
 
@@ -57,31 +57,32 @@ if __name__ == "__main__":
         "T_max": cfg_train.epochs,
     }
 
-    # cfg_model = {
-    #     "name": "recurrent",
-    #     "in_size": 13,
-    #     "hidden_size": 32,
-    #     "out_size": 5,
-    #     "rnn_cell": "rnn",
-    #     "num_layers": 3,
-    #     "dropout": 0.3,
-    #     "bidirectional": True,
-    #     "attend": False,
-    # }
     cfg_model = {
-        "name": "presto",
-        "hidden_size": 128,
-        # "head": [512, 256, 128, 64],
+        "name": "recurrent",
+        "in_size": 15,
+        "hidden_size": 32,
         "out_size": 2,
+        "rnn_cell": "lstm",
+        "num_layers": 3,
+        "head": [512, 256, 128, 64],
         "dropout": 0.4,
-        "weights_path": "/mnt/teratron/data/presto_encoder.pt",
-        "frozen": True,
+        "bidirectional": True,
+        "attend": True,
     }
+    # cfg_model = {
+    #     "name": "presto",
+    #     "hidden_size": 128,
+    #     # "head": [512, 256, 128, 64],
+    #     "out_size": 2,
+    #     "dropout": 0.4,
+    #     "weights_path": "/mnt/teratron/data/presto_encoder.pt",
+    #     "frozen": True,
+    # }
 
     start_month = 4
     end_month = 7
 
-    DATASET_ROOT = "/mnt/teratron/data/amorfa"
+    DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
     collate_fn = multimodal_pad_collate_fn
     ds_instance = DatasetInstance.REGIONAL
     curr_modalities = [Modality.SENTINEL_2_L2A, Modality.SENTINEL_1_ASC]
@@ -199,7 +200,8 @@ if __name__ == "__main__":
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
             # t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
-            t.ToPrestoFormat(month_start=start_month),
+            # t.ToPrestoFormat(month_start=start_month),
+            t.ConcatenateModalities(curr_modalities, dim=-1),
             t.MapLabels(mapper=label_mapper),
         ]
     )
@@ -207,7 +209,8 @@ if __name__ == "__main__":
         [
             t.BatchSpatialFlatten(batch_first=True),
             t.BatchFilterOut(labels=-1),
-            t.ToPrestoFormat(month_start=start_month),
+            # t.ToPrestoFormat(month_start=start_month),
+            t.ConcatenateModalities(curr_modalities, dim=-1),
             t.MapLabels(mapper=label_mapper),
         ]
     )

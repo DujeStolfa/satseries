@@ -3,11 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class BahdanauAttention(nn.Module):
-    def __init__(self, in_size, out_size, batch_first):
-        super().__init__()
-        self.W1 = nn.Linear(in_size, out_size)
-        self.w2 = nn.Linear(out_size, 1)
+class BahdanauAttentionPool(nn.Module):
+    def __init__(self, in_size, hidden_size, batch_first):
+        super(BahdanauAttentionPool, self).__init__()
+        self.W1 = nn.Linear(in_size, hidden_size)
+        self.w2 = nn.Linear(hidden_size, 1)
         self.batch_first = batch_first
 
     def forward(self, queries, keys, values):
@@ -27,3 +27,12 @@ class BahdanauAttention(nn.Module):
         out_attn = torch.bmm(alpha, values).squeeze(1)
 
         return out_attn, alpha
+
+
+class LinearGeluBN(nn.Sequential):
+    def __init__(self, in_size, out_size, dropout):
+        super(LinearGeluBN, self).__init__()
+        self.append(nn.Linear(in_size, out_size))
+        self.append(nn.BatchNorm1d(out_size))
+        self.append(nn.GELU())
+        self.append(nn.Dropout(p=dropout))

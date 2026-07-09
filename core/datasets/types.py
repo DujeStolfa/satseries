@@ -25,6 +25,24 @@ class UnimodalTimeSeries:
 
 
 @dataclass
+class UnimodalDatasetSample:
+    series: torch.Tensor | np.ndarray
+    target: torch.Tensor | np.ndarray
+    timesteps: torch.Tensor | np.ndarray
+
+    def to_device(self, device):
+        self.series = self.series.to(device)
+        self.target = self.target.to(device)
+        self.timesteps = self.timesteps.to(device)
+
+    def to_tensor(self):
+        self.series = torch.from_numpy(self.series)
+        self.target = torch.from_numpy(self.target)
+        self.timesteps = torch.from_numpy(self.timesteps)
+        return self
+
+
+@dataclass
 class MultimodalDatasetSample:
     modalities: Dict[Modality, UnimodalTimeSeries]
     target: torch.Tensor | np.ndarray
