@@ -37,12 +37,6 @@ if __name__ == "__main__":
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    cfg_optim = {
-        "name": "AdamW",
-        "lr": 1e-4,
-        "weight_decay": 1e-4,
-    }
-
     start_month = 4
     end_month = 7
 
@@ -162,6 +156,11 @@ if __name__ == "__main__":
         cfg_scheduler = {
             "name": "CosineAnnealingLR",
             "T_max": cfg_train.epochs,
+        }
+        cfg_optim = {
+            "name": "AdamW",
+            "lr": 1e-4,
+            "weight_decay": 1e-4,
         }
 
         DATASET_ROOT = "/mnt/teratron/data/amorfa"
