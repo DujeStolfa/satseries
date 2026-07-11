@@ -91,7 +91,7 @@ class Translate(Transform):
         return x
 
 
-class AddSpectralFeatures(Transform):
+class AddNDVI(Transform):
     def __init__(self, dim, r_idx, nir_idx):
         super().__init__()
         self._dim = dim
@@ -130,4 +130,46 @@ class AddSpectralFeatures(Transform):
             return torch.cat([x, ndvi.unsqueeze(self._dim)], dim=self._dim)
 
         x.images = torch.cat([x.images, ndvi.unsqueeze(self._dim)], dim=self._dim)
+        return x
+
+
+class AddVvVhRatio(Transform):
+    def __init__(self, dim, vv_idx, vh_idx):
+        super().__init__()
+        self._dim = dim
+        self._vv_idx = vv_idx
+        self._vh_idx = vh_idx
+
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["dim"] = self._dim
+        cfg["vv_idx"] = self._vv_idx
+        cfg["vh_idx"] = self._vh_idx
+        return cfg
+
+    def __call__(self, x):
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            num_dims = len(x.shape)
+        else:
+            num_dims = len(x.images.shape)
+
+        vv_slice = [slice(None)] * num_dims
+        vh_slice = [slice(None)] * num_dims
+        vv_slice[self._dim] = self._vv_idx
+        vh_slice[self._dim] = self._vh_idx
+
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            vv = x[*vv_slice]
+            vh = x[*vh_slice]
+        else:
+            vv = x.images[*vv_slice]
+            vh = x.images[*vh_slice]
+
+        ratio = vv - vh
+
+        if isinstance(x, (torch.Tensor, np.ndarray)):
+            return torch.cat([x, ratio.unsqueeze(self._dim)], dim=self._dim)
+
+        x.images = torch.cat([x.images, ratio.unsqueeze(self._dim)], dim=self._dim)
         return x

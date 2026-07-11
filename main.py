@@ -39,7 +39,7 @@ if __name__ == "__main__":
 
     cfg_train = TrainingConfig(
         clip=1.0,
-        epochs=50,
+        epochs=60,
         batch_size=8,
         batch_size_test=8,
         num_workers=4,
@@ -62,12 +62,12 @@ if __name__ == "__main__":
         "in_size": 15,
         "hidden_size": 32,
         "out_size": 2,
-        "rnn_cell": "lstm",
+        "rnn_cell": "rnn",
         "num_layers": 3,
         "head": [512, 256, 128, 64],
         "dropout": 0.4,
         "bidirectional": True,
-        "attend": True,
+        "attend": False,
     }
     # cfg_model = {
     #     "name": "presto",
@@ -82,7 +82,7 @@ if __name__ == "__main__":
     start_month = 4
     end_month = 7
 
-    DATASET_ROOT = "E:\\data\\diplomski\\amorfa"
+    DATASET_ROOT = "/mnt/teratron/data/amorfa"
     collate_fn = multimodal_pad_collate_fn
     ds_instance = DatasetInstance.REGIONAL
     curr_modalities = [Modality.SENTINEL_2_L2A, Modality.SENTINEL_1_ASC]
@@ -156,16 +156,22 @@ if __name__ == "__main__":
                 t.Compose(
                     [
                         t.Scale(1e-4, dim=1),
-                        t.AddSpectralFeatures(dim=1, r_idx=3, nir_idx=7),
+                        t.AddNDVI(dim=1, r_idx=3, nir_idx=7),
+                        t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
                     ]
                 ),
                 Modality.SENTINEL_2_L2A,
             ),
             t.ApplyToModality(
-                t.Compose([t.Translate(25, dim=1), t.Scale(1 / 25, dim=1)]),
+                t.Compose(
+                    [
+                        # t.AddVvVhRatio(dim=1, vv_idx=0, vh_idx=1),
+                        t.Translate(25, dim=1),
+                        t.Scale(1 / 25, dim=1),
+                    ]
+                ),
                 Modality.SENTINEL_1_ASC,
             ),
-            # t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
         ]
     )
     test_transforms = t.Compose(
@@ -183,16 +189,22 @@ if __name__ == "__main__":
                 t.Compose(
                     [
                         t.Scale(1e-4, dim=1),
-                        t.AddSpectralFeatures(dim=1, r_idx=3, nir_idx=7),
+                        t.AddNDVI(dim=1, r_idx=3, nir_idx=7),
+                        t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
                     ]
                 ),
                 Modality.SENTINEL_2_L2A,
             ),
             t.ApplyToModality(
-                t.Compose([t.Translate(25, dim=1), t.Scale(1 / 25, dim=1)]),
+                t.Compose(
+                    [
+                        # t.AddVvVhRatio(dim=1, vv_idx=0, vh_idx=1),
+                        t.Translate(25, dim=1),
+                        t.Scale(1 / 25, dim=1),
+                    ]
+                ),
                 Modality.SENTINEL_1_ASC,
             ),
-            # t.Normalize(mean=data_stats["mean"], std=data_stats["std"]),
         ]
     )
     batch_transforms_train = t.Compose(
