@@ -27,10 +27,10 @@ def apply_mask(x, mask):
 
 
 if __name__ == "__main__":
-    out_file = "/mnt/teratron/rezultati/per_pixel_eval.csv"
+    out_file = "/mnt/teratron/rezultati/per_pixel_eval_fix.csv"
 
     model = load_model(
-        "runs:/30c9755e1a56455fac76377e24f0cca4/model"
+        "runs:/6e6befc2fc1f4eb1aeb088545b5ef0a8/model"
     )
     print(model.to("cuda"))
 

@@ -10,7 +10,7 @@ from core.loops import train, evaluate
 from core.losses import build_loss
 from core.models import build_model
 from core.utils import build_optimizer, build_scheduler
-from experiment.configs import ExperimentConfig
+from experiment.configs import ExperimentConfig, TrainingConfig
 
 
 def set_seed(seed):
@@ -24,7 +24,7 @@ def set_seed(seed):
 
 
 def load_datasets(
-    cfg: ExperimentConfig,
+    cfg: TrainingConfig,
     train_ds,
     train_eval_ds,
     val_ds,
@@ -35,12 +35,12 @@ def load_datasets(
     if batch_sampler is None:
         train_loader = DataLoader(
             train_ds,
-            batch_size=cfg.training.batch_size,
+            batch_size=cfg.batch_size,
             shuffle=True,
             collate_fn=collate_fn,
             pin_memory=True,
-            num_workers=cfg.training.num_workers,
-            persistent_workers=cfg.training.num_workers > 0,
+            num_workers=cfg.num_workers,
+            persistent_workers=cfg.num_workers > 0,
         )
     else:
         train_loader = DataLoader(
@@ -48,36 +48,36 @@ def load_datasets(
             batch_sampler=batch_sampler,
             collate_fn=collate_fn,
             pin_memory=True,
-            num_workers=cfg.training.num_workers,
-            persistent_workers=cfg.training.num_workers > 0,
+            num_workers=cfg.num_workers,
+            persistent_workers=cfg.num_workers > 0,
         )
 
     train_eval_loader = DataLoader(
         train_eval_ds,
-        batch_size=cfg.training.batch_size_test,
+        batch_size=cfg.batch_size_test,
         shuffle=False,
         collate_fn=collate_fn,
         pin_memory=True,
-        num_workers=cfg.training.num_workers,
-        persistent_workers=cfg.training.num_workers > 0,
+        num_workers=cfg.num_workers,
+        persistent_workers=cfg.num_workers > 0,
     )
     val_loader = DataLoader(
         val_ds,
-        batch_size=cfg.training.batch_size_test,
+        batch_size=cfg.batch_size_test,
         shuffle=False,
         collate_fn=collate_fn,
         pin_memory=True,
-        num_workers=cfg.training.num_workers,
-        persistent_workers=cfg.training.num_workers > 0,
+        num_workers=cfg.num_workers,
+        persistent_workers=cfg.num_workers > 0,
     )
     test_loader = DataLoader(
         test_ds,
-        batch_size=cfg.training.batch_size_test,
+        batch_size=cfg.batch_size_test,
         shuffle=False,
         collate_fn=collate_fn,
         pin_memory=True,
-        num_workers=cfg.training.num_workers,
-        persistent_workers=cfg.training.num_workers > 0,
+        num_workers=cfg.num_workers,
+        persistent_workers=cfg.num_workers > 0,
     )
     return train_loader, train_eval_loader, val_loader, test_loader
 
@@ -106,6 +106,12 @@ def log_dict_with_name(cfg: ExperimentConfig, attr_name):
         )
     else:
         mlflow.log_param(attr_name, None)
+
+
+def _pad_int(value: int, min_len=3):
+    value = str(value)
+    padded = "0" * min_len + value
+    return padded[-1 * max(len(value), min_len) :]
 
 
 def run_experiment(
@@ -155,7 +161,7 @@ def run_experiment(
                 )
 
         train_loader, train_eval_loader, val_loader, test_loader = load_datasets(
-            cfg,
+            cfg.training,
             train_ds,
             train_eval_ds,
             val_ds,
@@ -219,6 +225,13 @@ def run_experiment(
             )
             log_eval("val", val_loss, acc, f1, precision, recall, ap, step=epoch)
 
+            mlflow.pytorch.log_model(
+                model,
+                name=f"checkpoint_{_pad_int(epoch)}",
+                serialization_format="pickle",
+                step=epoch,
+            )
+
         test_loss, acc, f1, precision, recall, ap = evaluate(
             model,
             test_loader,
@@ -228,5 +241,4 @@ def run_experiment(
         )
         log_eval("test", test_loss, acc, f1, precision, recall, ap, step=epoch)
 
-        mlflow.pytorch.log_model(model, name="model", serialization_format="pickle")
         return model
