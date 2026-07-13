@@ -39,11 +39,10 @@ if __name__ == "__main__":
 
     cfg_train = TrainingConfig(
         clip=1.0,
-        epochs=60,
-        batch_size=8,
-        batch_size_test=8,
+        epochs=50,
+        batch_size=5,
+        batch_size_test=5,
         num_workers=4,
-        # seed=2026070601,
     )
 
     cfg_optim = {
@@ -58,26 +57,15 @@ if __name__ == "__main__":
     }
 
     cfg_model = {
-        "name": "recurrent",
-        "in_size": 15,
-        "hidden_size": 32,
+        "name": "tae",
+        "in_size": 13,
+        "hidden_size": 128,
+        "embedd_dim": 128,
+        "num_heads": 8,
         "out_size": 2,
-        "rnn_cell": "rnn",
-        "num_layers": 3,
         "head": [512, 256, 128, 64],
         "dropout": 0.4,
-        "bidirectional": True,
-        "attend": False,
     }
-    # cfg_model = {
-    #     "name": "presto",
-    #     "hidden_size": 128,
-    #     # "head": [512, 256, 128, 64],
-    #     "out_size": 2,
-    #     "dropout": 0.4,
-    #     "weights_path": "/mnt/teratron/data/presto_encoder.pt",
-    #     "frozen": True,
-    # }
 
     start_month = 4
     end_month = 7
@@ -85,7 +73,7 @@ if __name__ == "__main__":
     DATASET_ROOT = "/mnt/teratron/data/amorfa"
     collate_fn = multimodal_pad_collate_fn
     ds_instance = DatasetInstance.REGIONAL
-    curr_modalities = [Modality.SENTINEL_2_L2A, Modality.SENTINEL_1_ASC]
+    curr_modalities = [Modality.SENTINEL_2_L2A]  # , Modality.SENTINEL_1_ASC]
     core_train_ds = MultimodalTimeSeriesDataset(
         DATASET_ROOT,
         ds_instance,
@@ -143,14 +131,14 @@ if __name__ == "__main__":
     train_transforms = t.Compose(
         [
             # t.BiasedRandomCrop(width=100, height=100, seed=cfg_train.seed),
-            t.ApplyToModality(
-                t.MonthlyRandomSample(
-                    month_start=start_month,
-                    month_end=end_month,
-                    seed=cfg_train.seed,
-                ),
-                curr_modalities,
-            ),
+            # t.ApplyToModality(
+            #     t.MonthlyRandomSample(
+            #         month_start=start_month,
+            #         month_end=end_month,
+            #         seed=cfg_train.seed,
+            #     ),
+            #     curr_modalities,
+            # ),
             t.ToTensor(),
             t.ApplyToModality(
                 t.Compose(
@@ -162,28 +150,28 @@ if __name__ == "__main__":
                 ),
                 Modality.SENTINEL_2_L2A,
             ),
-            t.ApplyToModality(
-                t.Compose(
-                    [
-                        # t.AddVvVhRatio(dim=1, vv_idx=0, vh_idx=1),
-                        t.Translate(25, dim=1),
-                        t.Scale(1 / 25, dim=1),
-                    ]
-                ),
-                Modality.SENTINEL_1_ASC,
-            ),
+            # t.ApplyToModality(
+            #     t.Compose(
+            #         [
+            #             # t.AddVvVhRatio(dim=1, vv_idx=0, vh_idx=1),
+            #             t.Translate(25, dim=1),
+            #             t.Scale(1 / 25, dim=1),
+            #         ]
+            #     ),
+            #     Modality.SENTINEL_1_ASC,
+            # ),
         ]
     )
     test_transforms = t.Compose(
         [
-            t.ApplyToModality(
-                t.MonthlyRandomSample(
-                    month_start=start_month,
-                    month_end=end_month,
-                    seed=cfg_train.seed,
-                ),
-                curr_modalities,
-            ),
+            # t.ApplyToModality(
+            #     t.MonthlyRandomSample(
+            #         month_start=start_month,
+            #         month_end=end_month,
+            #         seed=cfg_train.seed,
+            #     ),
+            #     curr_modalities,
+            # ),
             t.ToTensor(),
             t.ApplyToModality(
                 t.Compose(
@@ -195,16 +183,16 @@ if __name__ == "__main__":
                 ),
                 Modality.SENTINEL_2_L2A,
             ),
-            t.ApplyToModality(
-                t.Compose(
-                    [
-                        # t.AddVvVhRatio(dim=1, vv_idx=0, vh_idx=1),
-                        t.Translate(25, dim=1),
-                        t.Scale(1 / 25, dim=1),
-                    ]
-                ),
-                Modality.SENTINEL_1_ASC,
-            ),
+            # t.ApplyToModality(
+            #     t.Compose(
+            #         [
+            #             # t.AddVvVhRatio(dim=1, vv_idx=0, vh_idx=1),
+            #             t.Translate(25, dim=1),
+            #             t.Scale(1 / 25, dim=1),
+            #         ]
+            #     ),
+            #     Modality.SENTINEL_1_ASC,
+            # ),
         ]
     )
     batch_transforms_train = t.Compose(
@@ -214,6 +202,7 @@ if __name__ == "__main__":
             # t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
             # t.ToPrestoFormat(month_start=start_month),
             t.ConcatenateModalities(curr_modalities, dim=-1),
+            t.ToSparseSeries(start_month),
             t.MapLabels(mapper=label_mapper),
         ]
     )
@@ -223,6 +212,7 @@ if __name__ == "__main__":
             t.BatchFilterOut(labels=-1),
             # t.ToPrestoFormat(month_start=start_month),
             t.ConcatenateModalities(curr_modalities, dim=-1),
+            t.ToSparseSeries(start_month),
             t.MapLabels(mapper=label_mapper),
         ]
     )

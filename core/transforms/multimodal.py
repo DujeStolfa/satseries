@@ -9,7 +9,9 @@ from core.datasets import (
     UnimodalDatasetSample,
 )
 from core.datasets.base import Modality
+from core.datasets.types import SparseSeriesDatasetSample
 from core.transforms.base import Transform
+from core.transforms.utils import days_from_civil
 
 
 class ApplyToModality(Transform):
@@ -171,7 +173,7 @@ class ConcatenateModalities(Transform):
             images.append(item.images)
             timesteps.append(item.timesteps)
 
-        series_lengths = [len(ts) for ts in timesteps]
+        series_lengths = [ts.shape[1] for ts in timesteps]
         if len(set(series_lengths)) > 1:
             raise ValueError(
                 f"Modalities are not temporally aligned, got lengths {series_lengths}"
@@ -186,4 +188,29 @@ class ConcatenateModalities(Transform):
             series=images,
             target=x.target,
             timesteps=timesteps[0],
+        )
+
+
+class ToSparseSeries(Transform):
+    def __init__(self, season_start_month):
+        self._season_start_month = season_start_month
+
+    def __call__(self, x: UnimodalDatasetSample) -> SparseSeriesDatasetSample:
+        start_dates = days_from_civil(
+            x.timesteps[:, 0, 0], self._season_start_month, 1
+        )  # [B]
+        end_dates = days_from_civil(
+            x.timesteps[..., 0], x.timesteps[..., 1], x.timesteps[..., 2]
+        )  # [B, T]
+
+        positions = torch.from_numpy(end_dates - start_dates[:, None])
+
+        ignore_mask = x.timesteps[..., 0] == 0  # [B, T]
+        positions[ignore_mask] = 0
+
+        return SparseSeriesDatasetSample(
+            series=x.series,
+            target=x.target,
+            positions=positions,
+            ignore_mask=ignore_mask,
         )

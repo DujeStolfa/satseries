@@ -17,6 +17,80 @@ import numpy as np
 import copy
 
 from core.datasets.types import SparseSeriesDatasetSample
+from core.models.modules import LinearGeluBN
+
+
+class TaeClassifier(nn.Module):
+    def __init__(
+        self, in_size, hidden_size, embed_dim, num_heads, out_size, head_cfg, dropout
+    ):
+        super(TaeClassifier, self).__init__()
+        self.encoder = TemporalAttentionEncoder(
+            in_channels=in_size,
+            n_head=num_heads,
+            d_k=embed_dim,
+            d_model=hidden_size,
+            n_neurons=[num_heads * hidden_size, hidden_size, hidden_size],
+            dropout=dropout,
+            T=100,
+            len_max_seq=365,
+        )
+
+        head_cfg = [hidden_size] + head_cfg
+        self.blocks = nn.ModuleList(
+            [
+                LinearGeluBN(block_in, block_out, dropout)
+                for block_in, block_out in zip(head_cfg[:-1], head_cfg[1:])
+            ]
+        )
+
+        self.logits = nn.Linear(in_features=head_cfg[-1], out_features=out_size)
+
+    def forward(self, x: SparseSeriesDatasetSample):
+        h = self.encoder(x)
+
+        for block in self.blocks:
+            h = block(h)
+
+        logits = self.logits(h)
+        return logits
+
+
+class LtaeClassifier(nn.Module):
+    def __init__(
+        self, in_size, hidden_size, embedd_dim, num_heads, out_size, head_cfg, dropout
+    ):
+        super(LtaeClassifier, self).__init__()
+        self.encoder = LightweightTemporalAttentionEncoder(
+            in_channels=in_size,
+            n_head=num_heads,
+            d_k=embedd_dim,
+            d_model=hidden_size,
+            n_neurons=[hidden_size, hidden_size, hidden_size],
+            dropout=dropout,
+            T=1000,
+            len_max_seq=365,
+            return_att=False,
+        )
+
+        head_cfg = [hidden_size] + head_cfg
+        self.blocks = nn.ModuleList(
+            [
+                LinearGeluBN(block_in, block_out, dropout)
+                for block_in, block_out in zip(head_cfg[:-1], head_cfg[1:])
+            ]
+        )
+
+        self.logits = nn.Linear(in_features=head_cfg[-1], out_features=out_size)
+
+    def forward(self, x: SparseSeriesDatasetSample):
+        h = self.encoder(x)
+
+        for block in self.blocks:
+            h = block(h)
+
+        logits = self.logits(h)
+        return logits
 
 
 class TemporalAttentionEncoder(nn.Module):
