@@ -3,6 +3,7 @@ import torch.nn as nn
 from core.models.presto import PrestoLinear, PrestoDeep
 from core.models.recurrent import RecurrentModel
 from core.models.temporal_attention import LtaeClassifier, TaeClassifier
+from core.models.transformer import SequenceClassificationTransformer
 
 
 def build_model(cfg: dict) -> nn.Module:
@@ -63,6 +64,18 @@ def build_model(cfg: dict) -> nn.Module:
             cfg["out_size"],
             cfg["head"],
             cfg["dropout"],
+        )
+
+    if name == "transformer":
+        return SequenceClassificationTransformer(
+            cfg["in_size"],
+            cfg["embed_size"],
+            cfg["out_size"],
+            cfg["num_layers"],
+            cfg["num_heads"],
+            cfg["head"],
+            cfg["dropout"],
+            cfg["attn_dropout"],
         )
 
     raise ValueError(f"Unknown model: {name}")

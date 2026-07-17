@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     cfg_optim = {
         "name": "AdamW",
-        "lr": 1e-3,
+        "lr": 1e-4,
         "weight_decay": 1e-4,
     }
 
@@ -57,15 +57,26 @@ if __name__ == "__main__":
     }
 
     cfg_model = {
-        "name": "tae",
+        "name": "transformer",
         "in_size": 13,
-        "hidden_size": 128,
-        "embedd_dim": 128,
-        "num_heads": 8,
+        "embed_size": 128,
         "out_size": 2,
+        "num_layers": 4,
+        "num_heads": 4,
         "head": [512, 256, 128, 64],
         "dropout": 0.4,
+        "attn_dropout": 0.2,
     }
+    # cfg_model = {
+    #     "name": "tae",
+    #     "in_size": 13,
+    #     "hidden_size": 128,
+    #     "embedd_dim": 128,
+    #     "num_heads": 8,
+    #     "out_size": 2,
+    #     "head": [512, 256, 128, 64],
+    #     "dropout": 0.4,
+    # }
 
     start_month = 4
     end_month = 7
