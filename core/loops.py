@@ -1,20 +1,10 @@
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.utils.data as data
 import torch.optim as optim
-from sklearn.metrics import (
-    accuracy_score,
-    precision_recall_fscore_support,
-    average_precision_score,
-)
 from tqdm import tqdm
 
-
-def _per_class_average_precision(gt, probs):
-    return np.array(
-        [average_precision_score(gt == i, probs[:, i]) for i in range(probs.shape[-1])]
-    )
+from core.evaluation import Evaluator
 
 
 def train(
@@ -23,13 +13,14 @@ def train(
     criterion: nn.Module,
     optimizer: optim.Optimizer,
     scheduler: optim.lr_scheduler.LRScheduler,
+    evaluator: Evaluator,
     device,
     clip,
     batch_transforms=None,
 ):
     model.train()
+    evaluator.reset()
     train_loss = 0.0
-    gt, probs = [], []
 
     for item, lengths in tqdm(dataloader, "Training", ncols=0):
         if batch_transforms is not None:
@@ -48,34 +39,27 @@ def train(
         optimizer.step()
 
         train_loss += loss.item()
-        gt.append(item.target.detach().cpu())
-        probs.append(torch.softmax(logits.detach(), dim=1).cpu())
+        evaluator.update(
+            item.target.detach().cpu(),
+            torch.softmax(logits.detach().cpu(), dim=1).numpy(),
+        )
 
     scheduler.step()
 
-    probs = torch.cat(probs).cpu().numpy()
-    preds = np.argmax(probs, axis=1)
-
-    gt = torch.cat(gt).cpu().numpy()
-    if len(gt.shape) == 2:
-        gt = np.argmax(gt, axis=1)
-
-    acc = accuracy_score(gt, preds)
-    ap = _per_class_average_precision(gt, probs)
-    precision, recall, f1, _ = precision_recall_fscore_support(gt, preds, average=None)
-    return train_loss / len(dataloader), acc, f1, precision, recall, ap
+    return train_loss / len(dataloader), evaluator.evaluate()
 
 
 def evaluate(
     model: nn.Module,
     dataloader: data.DataLoader,
     criterion: nn.Module,
+    evaluator: Evaluator,
     device,
     batch_transforms=None,
 ):
     model.eval()
+    evaluator.reset()
     eval_loss = 0.0
-    gt, probs = [], []
 
     with torch.no_grad():
         for item, lengths in tqdm(dataloader, "Evaluating", ncols=0):
@@ -87,17 +71,9 @@ def evaluate(
             logits = model(item)
             eval_loss += criterion(logits, item.target).item()
 
-            gt.append(item.target.detach().cpu())
-            probs.append(torch.softmax(logits.detach().cpu(), dim=1))
+            evaluator.update(
+                item.target.detach().cpu(),
+                torch.softmax(logits.detach().cpu(), dim=1).numpy(),
+            )
 
-    probs = torch.cat(probs).cpu().numpy()
-    preds = np.argmax(probs, axis=1)
-
-    gt = torch.cat(gt).cpu().numpy()
-    if len(gt.shape) == 2:
-        gt = np.argmax(gt, axis=1)
-
-    acc = accuracy_score(gt, preds)
-    ap = _per_class_average_precision(gt, probs)
-    precision, recall, f1, _ = precision_recall_fscore_support(gt, preds, average=None)
-    return eval_loss / len(dataloader), acc, f1, precision, recall, ap
+    return eval_loss / len(dataloader), evaluator.evaluate()

@@ -1,11 +1,13 @@
 import random
 from dataclasses import asdict
+from typing import Dict
 
 import mlflow
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from core.evaluation import EvaluationMetric, Evaluator
 from core.loops import train, evaluate
 from core.losses import build_loss
 from core.models import build_model
@@ -82,7 +84,15 @@ def load_datasets(
     return train_loader, train_eval_loader, val_loader, test_loader
 
 
-def log_eval(split: str, loss, acc, f1, precision, recall, ap, **kwargs):
+def log_eval(
+    split: str, loss, metrics: Dict[EvaluationMetric, float | np.ndarray], **kwargs
+):
+    acc = metrics[EvaluationMetric.ACCURACY]
+    f1 = metrics[EvaluationMetric.F1]
+    precision = metrics[EvaluationMetric.PRECISION]
+    recall = metrics[EvaluationMetric.RECALL]
+    ap = metrics[EvaluationMetric.AVERAGE_PRECISION]
+
     mlflow.log_metric(f"{split}_loss", loss, **kwargs)
     mlflow.log_metric(f"{split}_acc", acc, **kwargs)
     mlflow.log_metric(f"{split}_f1_macro", f1.mean(), **kwargs)
@@ -183,47 +193,48 @@ def run_experiment(
         optimizer = build_optimizer(model.parameters(), cfg.optimizer)
         scheduler = build_scheduler(optimizer, cfg.scheduler)
 
+        evaluator = Evaluator()
+
         for epoch in range(cfg.training.epochs):
             print(f"\nEpoch {epoch + 1}")
 
-            train_loss, acc, f1, precision, recall, ap = train(
+            train_loss, metrics = train(
                 model,
                 train_loader,
                 criterion,
                 optimizer,
                 scheduler,
+                evaluator,
                 device,
                 cfg.training.clip,
                 batch_transforms_train,
             )
-            log_eval("train", train_loss, acc, f1, precision, recall, ap, step=epoch)
+            log_eval("train", train_loss, metrics, step=epoch)
 
-            train_eval_loss, acc, f1, precision, recall, ap = evaluate(
+            train_eval_loss, metrics = evaluate(
                 model,
                 train_eval_loader,
                 criterion,
+                evaluator,
                 device,
                 batch_transforms_test,
             )
             log_eval(
                 "train_eval",
                 train_eval_loss,
-                acc,
-                f1,
-                precision,
-                recall,
-                ap,
+                metrics,
                 step=epoch,
             )
 
-            val_loss, acc, f1, precision, recall, ap = evaluate(
+            val_loss, metrics = evaluate(
                 model,
                 val_loader,
                 criterion,
+                evaluator,
                 device,
                 batch_transforms_test,
             )
-            log_eval("val", val_loss, acc, f1, precision, recall, ap, step=epoch)
+            log_eval("val", val_loss, metrics, step=epoch)
 
             mlflow.pytorch.log_model(
                 model,
@@ -232,13 +243,14 @@ def run_experiment(
                 step=epoch,
             )
 
-        test_loss, acc, f1, precision, recall, ap = evaluate(
+        test_loss, metrics = evaluate(
             model,
             test_loader,
             criterion,
+            evaluator,
             device,
             batch_transforms_test,
         )
-        log_eval("test", test_loss, acc, f1, precision, recall, ap, step=epoch)
+        log_eval("test", test_loss, metrics, step=epoch)
 
         return model
