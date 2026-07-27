@@ -40,11 +40,23 @@ class Evaluator:
             return self._cache
 
         gt = np.concatenate(self._gt)
-        if len(gt.shape) == 2:
+        probs = np.concatenate(self._probs)
+
+        # Meke oznake
+        if gt.shape == probs.shape:
             gt = np.argmax(gt, axis=1)
 
-        probs = np.concatenate(self._probs)
         preds = np.argmax(probs, axis=1)
+
+        # Prostorne dimenzije
+        if len(gt.shape) == 3:
+            gt = gt.reshape(-1)
+            preds = preds.reshape(-1)
+
+            if len(probs.shape) == 4:
+                probs = probs.transpose(0, 2, 3, 1).reshape(-1, probs.shape[1])
+            else:
+                probs = probs.reshape(-1)
 
         acc = accuracy_score(gt, preds)
         ap = _per_class_average_precision(gt, probs)
@@ -60,7 +72,7 @@ class Evaluator:
             EvaluationMetric.AVERAGE_PRECISION: ap,
         }
         self._cache = metrics
-        self._modified = True
+        self._modified = False
         return metrics
 
     def reset(self):
@@ -68,3 +80,45 @@ class Evaluator:
         self._probs = []
         self._cache = None
         self._modified = False
+
+
+if __name__ == "__main__":
+    from pprint import pprint
+    from lovely_numpy import lo
+
+    np.random.seed(1414213)
+
+    evaluator = Evaluator()
+
+    probs = np.random.random((1, 1, 3, 3))
+    probs = np.concatenate([probs, 1 - probs], axis=1)
+    print("Input shape", probs.shape)
+
+    gt = np.random.random((1, 1, 3, 3))
+    gt = np.concatenate([gt, 1 - gt], axis=1)
+
+    evaluator.update(gt, probs)
+    result = evaluator.evaluate()
+    pprint(result)
+    print()
+
+    np.random.seed(1414213)
+
+    probs = np.random.random((5, 1))
+    probs = np.concatenate([probs, 1 - probs], axis=1)
+    print("Input shape", probs.shape)
+
+    gt = np.array(
+        [
+            [0.9, 0.1],
+            [0.75, 0.25],
+            [1.0, 0.0],
+            [0.1, 0.9],
+            [0.1, 0.8],
+        ]
+    )
+
+    evaluator.update(gt, probs)
+    result = evaluator.evaluate()
+    pprint(result)
+    print()
