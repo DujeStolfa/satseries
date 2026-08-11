@@ -4,6 +4,8 @@ from core.models.presto import PrestoLinear, PrestoDeep
 from core.models.recurrent import RecurrentModel
 from core.models.temporal_attention import LtaeClassifier, TaeClassifier
 from core.models.transformer import SequenceClassificationTransformer
+from core.models.utae.base import UtaeClassifier
+from core.models.decorators import PartiallyAnnotatedSemSegDecorator
 
 
 def build_model(cfg: dict) -> nn.Module:
@@ -76,6 +78,26 @@ def build_model(cfg: dict) -> nn.Module:
             cfg["head"],
             cfg["dropout"],
             cfg["attn_dropout"],
+        )
+
+    if name == "utae":
+        return PartiallyAnnotatedSemSegDecorator(
+            UtaeClassifier(
+                cfg["in_size"],
+                cfg["in_width"],
+                cfg["in_height"],
+                cfg["embed_size"],
+                cfg["hidden_size"],
+                cfg["num_heads"],
+                cfg["encoder_widths"],
+                cfg["decoder_widths"],
+                cfg["kernel_size"],
+                cfg["stride"],
+                cfg["padding"],
+                cfg["out_size"],
+                cfg["head"],
+                cfg["dropout"],
+            )
         )
 
     raise ValueError(f"Unknown model: {name}")

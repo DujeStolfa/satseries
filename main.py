@@ -56,30 +56,37 @@ if __name__ == "__main__":
         "T_max": cfg_train.epochs,
     }
 
-    cfg_model = {
-        "name": "transformer",
-        "in_size": 13,
-        "embed_size": 128,
-        "out_size": 2,
-        "num_layers": 4,
-        "num_heads": 4,
-        "head": [512, 256, 128, 64],
-        "dropout": 0.4,
-        "attn_dropout": 0.2,
-    }
     # cfg_model = {
-    #     "name": "tae",
+    #     "name": "transformer",
     #     "in_size": 13,
-    #     "hidden_size": 128,
-    #     "embedd_dim": 128,
-    #     "num_heads": 8,
+    #     "embed_size": 128,
     #     "out_size": 2,
+    #     "num_layers": 4,
+    #     "num_heads": 4,
     #     "head": [512, 256, 128, 64],
     #     "dropout": 0.4,
+    #     "attn_dropout": 0.2,
     # }
+    cfg_model = {
+        "name": "utae",
+        "in_size": 13,
+        "in_width": 120,
+        "in_height": 120,
+        "hidden_size": 128,
+        "embed_size": 128,
+        "num_heads": 8,
+        "encoder_widths": [64, 64, 64, 128],
+        "decoder_widths": [32, 32, 64, 128],
+        "kernel_size": 4,
+        "stride": 2,
+        "padding": 1,
+        "out_size": 2,
+        "head": [],
+        "dropout": 0.4,
+    }
 
     start_month = 4
-    end_month = 7
+    end_month = 10
 
     DATASET_ROOT = "/mnt/teratron/data/amorfa"
     collate_fn = multimodal_pad_collate_fn
@@ -136,6 +143,7 @@ if __name__ == "__main__":
             [0, 1],
             [0.25, 0.75],
             [0.75, 0.25],
+            [0, 0],  # -1, unknown
         ]
     )
 
@@ -208,19 +216,20 @@ if __name__ == "__main__":
     )
     batch_transforms_train = t.Compose(
         [
-            t.BatchSpatialFlatten(batch_first=True),
-            t.BatchFilterOut(labels=-1),
+            # t.BatchSpatialFlatten(batch_first=True),
+            # t.BatchFilterOut(labels=-1),
             # t.BatchUndersamplingBalancer(reference_cls=1, undersample_cls=0),
             # t.ToPrestoFormat(month_start=start_month),
             t.ConcatenateModalities(curr_modalities, dim=-1),
             t.ToSparseSeries(start_month),
+            # t.BatchRandomTemporalTruncate(start_month, end_month),
             t.MapLabels(mapper=label_mapper),
         ]
     )
     batch_transforms_test = t.Compose(
         [
-            t.BatchSpatialFlatten(batch_first=True),
-            t.BatchFilterOut(labels=-1),
+            # t.BatchSpatialFlatten(batch_first=True),
+            # t.BatchFilterOut(labels=-1),
             # t.ToPrestoFormat(month_start=start_month),
             t.ConcatenateModalities(curr_modalities, dim=-1),
             t.ToSparseSeries(start_month),
