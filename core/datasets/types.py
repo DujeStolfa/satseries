@@ -47,18 +47,21 @@ class SparseSeriesDatasetSample:
     series: torch.Tensor | np.ndarray
     target: torch.Tensor | np.ndarray
     positions: torch.Tensor | np.ndarray
+    timesteps: torch.Tensor | np.ndarray
     ignore_mask: torch.Tensor | np.ndarray
 
     def to_device(self, device):
         self.series = self.series.to(device)
         self.target = self.target.to(device)
         self.positions = self.positions.to(device)
+        self.timesteps = self.timesteps.to(device)
         self.ignore_mask = self.ignore_mask.to(device)
 
     def to_tensor(self):
         self.series = torch.from_numpy(self.series)
         self.target = torch.from_numpy(self.target)
         self.positions = torch.from_numpy(self.positions)
+        self.timesteps = torch.from_numpy(self.timesteps)
         self.ignore_mask = torch.from_numpy(self.ignore_mask)
         return self
 

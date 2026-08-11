@@ -195,9 +195,15 @@ class ToSparseSeries(Transform):
     def __init__(self, season_start_month):
         self._season_start_month = season_start_month
 
+    @property
+    def config_dict(self):
+        cfg = super().config_dict
+        cfg["season_start_month"] = self._season_start_month
+        return cfg
+
     def __call__(self, x: UnimodalDatasetSample) -> SparseSeriesDatasetSample:
         start_dates = days_from_civil(
-            x.timesteps[:, 0, 0], self._season_start_month, 1
+            torch.max(x.timesteps[:, :, 0], dim=1).values, self._season_start_month, 1
         )  # [B]
         end_dates = days_from_civil(
             x.timesteps[..., 0], x.timesteps[..., 1], x.timesteps[..., 2]
@@ -212,5 +218,6 @@ class ToSparseSeries(Transform):
             series=x.series,
             target=x.target,
             positions=positions,
+            timesteps=x.timesteps,
             ignore_mask=ignore_mask,
         )
