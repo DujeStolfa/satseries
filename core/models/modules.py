@@ -36,3 +36,12 @@ class LinearGeluBN(nn.Sequential):
         self.append(nn.BatchNorm1d(out_size))
         self.append(nn.GELU())
         self.append(nn.Dropout(p=dropout))
+
+
+class ConvGeluBN(nn.Sequential):
+    def __init__(self, in_channels, out_channels, dropout):
+        super(ConvGeluBN, self).__init__()
+        self.append(nn.Conv2d(in_channels, out_channels, (1, 1)))
+        self.append(nn.BatchNorm2d(out_channels))
+        self.append(nn.GELU())
+        self.append(nn.Dropout(p=dropout))
