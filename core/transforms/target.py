@@ -15,4 +15,8 @@ class MapLabels(Transform):
 
     def __call__(self, x):
         x.target = self._mapper[x.target.to(torch.long)]
+
+        if len(x.target.shape) == 4:
+            x.target = x.target.permute(0, 3, 1, 2)
+
         return x
