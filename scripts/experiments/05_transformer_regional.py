@@ -28,7 +28,7 @@ def ratios_to_posneg_indices(ratios, positive_labels):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Run early season experiments on TAE/LTAE models and the regional dataset"
+        description="Run early season experiments on the transformer model and the regional dataset"
     )
     parser.add_argument("name")
     args = parser.parse_args()
@@ -38,14 +38,14 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     start_month = 4
-    end_month = 7
+    # end_month = 7
 
     ds_instance = DatasetInstance.REGIONAL
 
     i = 0
-    for embed_size in [32, 128]:
-        for cfg_head in [[], [512, 256, 128, 64]]:
-            for num_layers in [1, 4]:
+    for embed_size in [128]:
+        for cfg_head in [[512, 256, 128, 64]]:
+            for num_layers in [1]:
                 for num_heads in [2, 4, 8]:
                     i += 1
                     print("Running experiment no.", i)
@@ -54,8 +54,8 @@ if __name__ == "__main__":
                     cfg_train = TrainingConfig(
                         clip=1.0,
                         epochs=20,
-                        batch_size=5,
-                        batch_size_test=5,
+                        batch_size=4,
+                        batch_size_test=4,
                         num_workers=4,
                     )
 

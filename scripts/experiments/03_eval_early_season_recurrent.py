@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from mlflow.pytorch import load_model
 
+from core.evaluation import EvaluationMetric, Evaluator
 from core.loops import evaluate
 import core.transforms as t
 from core.datasets import (
@@ -29,16 +30,22 @@ def ratios_to_posneg_indices(ratios, positive_labels):
     return positive_indices, negative_indices
 
 
-def eval_csv_rowpart(loss, acc, f1, precision, recall, ap):
-    metrics = [loss, acc, f1.mean(), f1.min()]
+def eval_csv_rowpart(loss, metrics):
+    acc = metrics[EvaluationMetric.ACCURACY]
+    f1 = metrics[EvaluationMetric.F1]
+    precision = metrics[EvaluationMetric.PRECISION]
+    recall = metrics[EvaluationMetric.RECALL]
+    ap = metrics[EvaluationMetric.AVERAGE_PRECISION]
+
+    row = [loss, acc, f1.mean(), f1.min()]
     for i in range(len(f1)):
-        metrics += [
+        row += [
             f1[i],
             precision[i],
             recall[i],
             ap[i],
         ]
-    return metrics
+    return row
 
 
 def eval_csv_headerpart(split, num_classes):
@@ -219,6 +226,7 @@ if __name__ == "__main__":
         )
 
         criterion = build_loss(cfg_loss)
+        evaluator = Evaluator()
 
         _, train_eval_loader, val_loader, test_loader = load_datasets(
             cfg_eval,
@@ -232,32 +240,35 @@ if __name__ == "__main__":
 
         out_row = [run_name, run_id, epoch]
 
-        train_eval_loss, acc, f1, precision, recall, ap = evaluate(
+        train_eval_loss, metrics = evaluate(
             model,
             train_eval_loader,
             criterion,
+            evaluator,
             device,
             batch_transforms_test,
         )
-        out_row += eval_csv_rowpart(train_eval_loss, acc, f1, precision, recall, ap)
+        out_row += eval_csv_rowpart(train_eval_loss, metrics)
 
-        val_loss, acc, f1, precision, recall, ap = evaluate(
+        val_loss, metrics = evaluate(
             model,
             val_loader,
             criterion,
+            evaluator,
             device,
             batch_transforms_test,
         )
-        out_row += eval_csv_rowpart(val_loss, acc, f1, precision, recall, ap)
+        out_row += eval_csv_rowpart(val_loss, metrics)
 
-        test_loss, acc, f1, precision, recall, ap = evaluate(
+        test_loss, metrics = evaluate(
             model,
             test_loader,
             criterion,
+            evaluator,
             device,
             batch_transforms_test,
         )
-        out_row += eval_csv_rowpart(test_loss, acc, f1, precision, recall, ap)
+        out_row += eval_csv_rowpart(test_loss, metrics)
 
         with open(args.out_file, "a", newline="") as f:
             writer = csv.writer(f)

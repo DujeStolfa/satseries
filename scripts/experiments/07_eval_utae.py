@@ -69,6 +69,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate a batch of checkpoints")
     parser.add_argument("in_file")
     parser.add_argument("out_file")
+    parser.add_argument("dataset")
     args = parser.parse_args()
 
     lt.monkey_patch()
@@ -77,13 +78,13 @@ if __name__ == "__main__":
 
     num_classes = 2
     start_month = 4
-    end_month = 7
+    ds_instance = DatasetInstance(args.dataset)
 
     cfg_eval = TrainingConfig(
         clip=1.0,
         epochs=None,
-        batch_size=5,
-        batch_size_test=5,
+        batch_size=4,
+        batch_size_test=4,
         num_workers=4,
     )
 
@@ -103,7 +104,6 @@ if __name__ == "__main__":
         run_name = row["run_name"]
         run_id = row["run_id"]
         epoch = row["step"]
-        ds_instance = DatasetInstance.REGIONAL
 
         print("- " * 30)
         print(f"Evaulating epoch {epoch} of run {run_id}")
@@ -144,6 +144,7 @@ if __name__ == "__main__":
                 [0, 1],
                 [0.25, 0.75],
                 [0.75, 0.25],
+                [0, 0],  # -1, unknown
             ]
         )
         batch_sampler = None
@@ -165,8 +166,6 @@ if __name__ == "__main__":
         )
         batch_transforms_test = t.Compose(
             [
-                t.BatchSpatialFlatten(batch_first=True),
-                t.BatchFilterOut(labels=-1),
                 t.ConcatenateModalities(curr_modalities, dim=-1),
                 t.ToSparseSeries(start_month),
                 t.MapLabels(mapper=label_mapper),

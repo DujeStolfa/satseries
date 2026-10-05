@@ -28,7 +28,7 @@ def ratios_to_posneg_indices(ratios, positive_labels):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Run early season experiments on TAE/LTAE models and the regional dataset"
+        description="Run experiments on TAE/LTAE models and the regional dataset"
     )
     parser.add_argument("name")
     args = parser.parse_args()
@@ -38,7 +38,6 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     start_month = 4
-    end_month = 7
 
     ds_instance = DatasetInstance.REGIONAL
 
@@ -153,6 +152,7 @@ if __name__ == "__main__":
                         t.BatchFilterOut(labels=-1),
                         t.ConcatenateModalities(curr_modalities, dim=-1),
                         t.ToSparseSeries(start_month),
+                        # t.BatchRandomTemporalTruncate(start_month + 2, end_month),
                         t.MapLabels(mapper=label_mapper),
                     ]
                 )
